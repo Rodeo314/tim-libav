@@ -295,7 +295,6 @@ typedef struct {
     int bit_rate;               ///< transmission bit rate
     int bit_rate_index;         ///< transmission bit rate index
 
-    int downmix;                ///< embedded downmix enabled
     int dynrange;               ///< embedded dynamic range flag
     int timestamp;              ///< embedded time stamp flag
     int aux_data;               ///< auxiliary data flag
@@ -338,7 +337,6 @@ typedef struct {
     int scale_factor[DCA_PRIM_CHANNELS_MAX][DCA_SUBBANDS][2];    ///< scale factors (2 if transient)
     int joint_huff[DCA_PRIM_CHANNELS_MAX];                       ///< joint subband scale factors codebook
     int joint_scale_factor[DCA_PRIM_CHANNELS_MAX][DCA_SUBBANDS]; ///< joint subband scale factors
-    int downmix_coef[DCA_PRIM_CHANNELS_MAX][2];                  ///< stereo downmix coefficients
     int dynrange_coef;                                           ///< dynamic range coefficient
 
     int high_freq_vq[DCA_PRIM_CHANNELS_MAX][DCA_SUBBANDS];       ///< VQ encoded high frequency subbands
@@ -569,7 +567,7 @@ static int dca_parse_frame_header(DCAContext *s)
     if (!s->bit_rate)
         return AVERROR_INVALIDDATA;
 
-    s->downmix           = get_bits(&s->gb, 1);
+    skip_bits1(&s->gb);  // always 0 (cf. ETSI TS 102 114 V1.3.1)
     s->dynrange          = get_bits(&s->gb, 1);
     s->timestamp         = get_bits(&s->gb, 1);
     s->aux_data          = get_bits(&s->gb, 1);
@@ -610,7 +608,6 @@ static int dca_parse_frame_header(DCAContext *s)
            s->sample_rate);
     av_log(s->avctx, AV_LOG_DEBUG, "bit rate: %i bits/s\n",
            s->bit_rate);
-    av_log(s->avctx, AV_LOG_DEBUG, "downmix: %i\n", s->downmix);
     av_log(s->avctx, AV_LOG_DEBUG, "dynrange: %i\n", s->dynrange);
     av_log(s->avctx, AV_LOG_DEBUG, "timestamp: %i\n", s->timestamp);
     av_log(s->avctx, AV_LOG_DEBUG, "aux_data: %i\n", s->aux_data);
@@ -793,27 +790,6 @@ static int dca_subframe_header(DCAContext *s, int base_channel, int block_index)
         }
     }
 
-    /* Stereo downmix coefficients */
-    if (!base_channel && s->prim_channels > 2) {
-        if (s->downmix) {
-            for (j = base_channel; j < s->prim_channels; j++) {
-                s->downmix_coef[j][0] = get_bits(&s->gb, 7);
-                s->downmix_coef[j][1] = get_bits(&s->gb, 7);
-            }
-        } else {
-            int am = s->amode & DCA_CHANNEL_MASK;
-            if (am >= FF_ARRAY_ELEMS(dca_default_coeffs)) {
-                av_log(s->avctx, AV_LOG_ERROR,
-                       "Invalid channel mode %d\n", am);
-                return AVERROR_INVALIDDATA;
-            }
-            for (j = base_channel; j < s->prim_channels; j++) {
-                s->downmix_coef[j][0] = dca_default_coeffs[am][j][0];
-                s->downmix_coef[j][1] = dca_default_coeffs[am][j][1];
-            }
-        }
-    }
-
     /* Dynamic range coefficient */
     if (!base_channel && s->dynrange)
         s->dynrange_coef = get_bits(&s->gb, 8);
@@ -907,16 +883,6 @@ static int dca_subframe_header(DCAContext *s, int base_channel, int block_index)
                 av_log(s->avctx, AV_LOG_DEBUG, " %i", s->joint_scale_factor[j][k]);
             av_log(s->avctx, AV_LOG_DEBUG, "\n");
         }
-    }
-    if (!base_channel && s->prim_channels > 2 && s->downmix) {
-        av_log(s->avctx, AV_LOG_DEBUG, "Downmix coeffs:\n");
-        for (j = 0; j < s->prim_channels; j++) {
-            av_log(s->avctx, AV_LOG_DEBUG, "Channel 0, %d = %f\n", j,
-                   dca_downmix_coeffs[s->downmix_coef[j][0]]);
-            av_log(s->avctx, AV_LOG_DEBUG, "Channel 1, %d = %f\n", j,
-                   dca_downmix_coeffs[s->downmix_coef[j][1]]);
-        }
-        av_log(s->avctx, AV_LOG_DEBUG, "\n");
     }
     for (j = base_channel; j < s->prim_channels; j++)
         for (k = s->vq_start_subband[j]; k < s->subband_activity[j]; k++)
@@ -1030,18 +996,18 @@ static void lfe_interpolation_fir(DCAContext *s, int decimation_select,
     }
 
 static void dca_downmix(float *samples, int srcfmt,
-                        int downmix_coef[DCA_PRIM_CHANNELS_MAX][2],
                         const int8_t *channel_mapping)
 {
     int c, l, r, sl, sr, s;
     int i;
     float t, u, v;
-    float coef[DCA_PRIM_CHANNELS_MAX][2];
+    float coef[5][2];
 
-    for (i = 0; i < DCA_PRIM_CHANNELS_MAX; i++) {
-        coef[i][0] = dca_downmix_coeffs[downmix_coef[i][0]];
-        coef[i][1] = dca_downmix_coeffs[downmix_coef[i][1]];
-    }
+    if (srcfmt < FF_ARRAY_ELEMS(dca_stereo_coeffs))
+        for (i = 0; i < 5; i++) {
+            coef[i][0] = dca_stereo_coeffs[srcfmt][i][0];
+            coef[i][1] = dca_stereo_coeffs[srcfmt][i][1];
+        }
 
     switch (srcfmt) {
     case DCA_MONO:
@@ -1287,7 +1253,7 @@ static int dca_filter_channels(DCAContext *s, int block_index)
 #if FF_API_REQUEST_CHANNELS
     /* Down mixing */
     if (s->avctx->request_channels == 2 && s->prim_channels > 2) {
-        dca_downmix(s->samples, s->amode, s->downmix_coef, s->channel_order_tab);
+        dca_downmix(s->samples, s->amode, s->channel_order_tab);
     }
 #endif
 
@@ -1323,7 +1289,7 @@ static int dca_subframe_footer(DCAContext *s, int base_channel)
         for (i = 0; i < aux_data_count; i++)
             get_bits(&s->gb, 8);
 
-        if (s->crc_present && (s->downmix || s->dynrange))
+        if (s->crc_present && s->dynrange)
             get_bits(&s->gb, 16);
     }
 
