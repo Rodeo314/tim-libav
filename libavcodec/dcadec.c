@@ -342,9 +342,10 @@ typedef struct {
     /* Core substream's embedded downmix coefficients (cf. ETSI TS 102 114 V1.3.1)
      * Input:  primary audio channels (incl. LFE, if present)
      * Output: downmix audio channels (up to 4, no LFE) */
-    uint8_t  core_downmix;                                       ///< embedded downmix coefficients available
-    uint8_t  core_downmix_mode;                                  ///< audio channel arrangement of embedded downmix
-    uint16_t core_downmix_codes[DCA_PRIM_CHANNELS_MAX + 1][4];   ///< codes for embedded downmix coefficients
+    uint8_t  core_downmix;                                          ///< embedded downmix coefficients available
+    uint8_t  core_downmix_mode;                                     ///< audio channel arrangement of embedded downmix
+    uint16_t core_downmix_codes[DCA_PRIM_CHANNELS_MAX + 1][4];      ///< codes for embedded downmix coefficients
+    uint16_t prev_core_downmix_codes[DCA_PRIM_CHANNELS_MAX + 1][4]; ///< codes for embedded downmix coefficients (previous frame)
 
     int high_freq_vq[DCA_PRIM_CHANNELS_MAX][DCA_SUBBANDS];       ///< VQ encoded high frequency subbands
 
@@ -1873,6 +1874,100 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
         return AVERROR_INVALIDDATA;
     }
 
+    /* Export downmix coefficients if applicable */
+    if (s->core_downmix &&
+        avctx->request_channel_layout ==
+        dca_core_channel_layout[s->core_downmix_mode]) {
+
+        s->frame.downmix_matrix_has_changed = 0;
+        if (memcmp(s->prev_core_downmix_codes, s->core_downmix_codes,
+                   sizeof(s->prev_core_downmix_codes))) {
+            memcpy(s->prev_core_downmix_codes, s->core_downmix_codes,
+                   sizeof(s->prev_core_downmix_codes));
+            s->frame.downmix_matrix_has_changed = 1;
+        }
+        if (!s->frame.downmix_matrix) {
+            // allocate a matrix large enough to cover all scenarios:
+            // - up to 4 output channels
+            // - up to DCA_PRIM_CHANNELS_MAX + LFE + XCh input channels
+            s->frame.downmix_matrix = av_malloc(sizeof(double) * 4 *
+                                                (DCA_PRIM_CHANNELS_MAX + 2));
+            s->frame.downmix_matrix_has_changed = 1;
+        }
+
+        if (s->frame.downmix_matrix_has_changed) {
+            int8_t sign, lfe_index;
+            uint8_t code, idx, in, in_channels, out, out_channels;
+            double *matrix;
+            const int8_t *chan_reorder;
+            matrix       = s->frame.downmix_matrix;
+            in_channels  = dca_channels[s->amode] + !!s->xch_present + !!s->lfe;
+            out_channels = dca_channels[s->core_downmix_mode];
+            chan_reorder = dca_channel_reorder_nolfe[s->core_downmix_mode];
+            lfe_index    = s->lfe ? in_channels - !!s->xch_present - 1 : -1;
+
+            for (in = 0; in < in_channels - !!s->xch_present; in++)
+                for (out = 0; out < out_channels; out++) {
+                    // write matrix in Libav channel order
+                    idx = (chan_reorder[out] * in_channels +
+                           (in == lfe_index ? dca_lfe_index[s->amode] :
+                            s->channel_order_tab[in]));
+
+                    sign = s->core_downmix_codes[in][out] & 0x100 ? 1 : -1;
+                    code = s->core_downmix_codes[in][out] & 0x0FF;
+                    matrix[idx] = (!code || code > 241 ? 0.0 :
+                                   sign * dca_dmixtable[code - 1]);
+                }
+
+            // downmix coefficients for XCh have to be computed
+            if (s->xch_present) {
+                uint8_t xch, lst, rst;
+                for (out = 0; out < out_channels; out++) {
+                    idx = chan_reorder[out] * in_channels;
+                    xch = idx + s->channel_order_tab[s->xch_base_channel];
+                    lst = idx + s->channel_order_tab[s->xch_base_channel - 2];
+                    rst = idx + s->channel_order_tab[s->xch_base_channel - 1];
+                    matrix[xch] = M_SQRT1_2 * (matrix[lst] + matrix[rst]);
+                }
+            }
+        }
+    } else if (s->frame.downmix_matrix) {
+        av_freep(&s->frame.downmix_matrix);
+        s->frame.downmix_matrix_has_changed = 1;
+    }
+
+#ifdef TRACE
+        if (s->frame.downmix_matrix_has_changed) {
+            av_log(avctx, AV_LOG_DEBUG, "\n");
+            if (s->frame.downmix_matrix) {
+                int in, in_channels, out, out_channels;
+                in_channels  =
+                    av_get_channel_layout_nb_channels(avctx->channel_layout);
+                out_channels =
+                    av_get_channel_layout_nb_channels(avctx->request_channel_layout);
+                av_log(avctx, AV_LOG_DEBUG, "New downmix coefficients.\n");
+                av_log(avctx, AV_LOG_DEBUG, "Channel:");
+                for (out = 0; out < out_channels; out++)
+                    av_log(avctx, AV_LOG_DEBUG, "    Output %02d", out + 1);
+                av_log(avctx, AV_LOG_DEBUG, "\n");
+                av_log(avctx, AV_LOG_DEBUG, "--------");
+                for (out = 0; out < out_channels; out++)
+                    av_log(avctx, AV_LOG_DEBUG, "    ---------");
+                av_log(avctx, AV_LOG_DEBUG, "\n");
+                for (in = 0; in < in_channels; in++) {
+                    av_log(avctx, AV_LOG_DEBUG, "Input %02d", in + 1);
+                    for (out = 0; out < out_channels; out++)
+                        av_log(avctx, AV_LOG_DEBUG, "    %+.6lf",
+                               s->frame.downmix_matrix[in + (out * in_channels)]);
+                    av_log(avctx, AV_LOG_DEBUG, "\n");
+                }
+                av_log(avctx, AV_LOG_DEBUG, "\n");
+            } else
+                av_log(avctx, AV_LOG_DEBUG,
+                       "Applicable downmix coefficients not available.\n");
+            av_log(avctx, AV_LOG_DEBUG, "\n");
+        }
+#endif
 
     /* There is nothing that prevents a dts frame to change channel configuration
        but Libav doesn't support that so only set the channels if it is previously
