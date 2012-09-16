@@ -1283,6 +1283,27 @@ typedef struct AVFrame {
      * - decoding: set by get_buffer()
      */
     uint64_t channel_layout;
+
+    /**
+     * Tell user application that downmix_matrix has changed from previous frame.
+     *
+     * - encoding: unused
+     * - decoding: set by libavcodec, default 0
+     */
+    int downmix_matrix_has_changed;
+
+    /**
+     * Downmix coefficients matrix.
+     *
+     * non-NULL if:
+     * - AVCodecContext.request_channel_layout is set
+     * - the decoder can't do the downmix by itself
+     * - the decoder can create a downmix matrix for the requested layout
+     *
+     * - encoding: unused
+     * - decoding: set by libavcodec, can be NULL
+     */
+    double *downmix_matrix;
 } AVFrame;
 
 struct AVCodecInternal;
