@@ -1876,8 +1876,8 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
 
     /* Export downmix coefficients if applicable */
     if (s->core_downmix &&
-        avctx->request_channel_layout ==
-        dca_core_channel_layout[s->core_downmix_mode]) {
+        dca_core_channel_layout[s->core_downmix_mode] ==
+        (avctx->request_channel_layout & ~AV_CH_LOW_FREQUENCY)) {
 
         s->frame.downmix_matrix_has_changed = 0;
         if (memcmp(s->prev_core_downmix_codes, s->core_downmix_codes,
@@ -1888,25 +1888,30 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
         }
         if (!s->frame.downmix_matrix) {
             // allocate a matrix large enough to cover all scenarios:
-            // - up to 4 output channels
+            // - up to 4 + LFE output channels
             // - up to DCA_PRIM_CHANNELS_MAX + LFE + XCh input channels
-            s->frame.downmix_matrix = av_malloc(sizeof(double) * 4 *
-                                                (DCA_PRIM_CHANNELS_MAX + 2));
+            s->frame.downmix_matrix = av_mallocz(sizeof(double) * (4 + 1) *
+                                                 (DCA_PRIM_CHANNELS_MAX + 2));
             s->frame.downmix_matrix_has_changed = 1;
         }
 
         if (s->frame.downmix_matrix_has_changed) {
             int8_t sign, lfe_index;
-            uint8_t code, idx, in, in_channels, out, out_channels;
+            uint8_t code, idx, in, in_channels, out, out_channels, out_lfe;
             double *matrix;
             const int8_t *chan_reorder;
             matrix       = s->frame.downmix_matrix;
             in_channels  = dca_channels[s->amode] + !!s->xch_present + !!s->lfe;
             out_channels = dca_channels[s->core_downmix_mode];
-            chan_reorder = dca_channel_reorder_nolfe[s->core_downmix_mode];
+            out_lfe      = s->lfe && (avctx->request_channel_layout &
+                                      AV_CH_LOW_FREQUENCY);
+            chan_reorder = (avctx->request_channel_layout & AV_CH_LOW_FREQUENCY ?
+                            dca_channel_reorder_lfe[s->core_downmix_mode] :
+                            dca_channel_reorder_nolfe[s->core_downmix_mode]);
             lfe_index    = s->lfe ? in_channels - !!s->xch_present - 1 : -1;
 
-            for (in = 0; in < in_channels - !!s->xch_present; in++)
+            // ignore LFE mix levels if both input & output have it
+            for (in = 0; in < in_channels - !!s->xch_present - out_lfe; in++)
                 for (out = 0; out < out_channels; out++) {
                     // write matrix in Libav channel order
                     idx = (chan_reorder[out] * in_channels +
@@ -1918,6 +1923,11 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
                     matrix[idx] = (!code || code > 241 ? 0.0 :
                                    sign * dca_dmixtable[code - 1]);
                 }
+
+            // route input LFE to output LFE if applicable
+            if (out_lfe)
+                matrix[dca_lfe_index[s->core_downmix_mode] * in_channels +
+                       dca_lfe_index[s->amode]] = 1.0;
 
             // downmix coefficients for XCh have to be computed
             if (s->xch_present) {
