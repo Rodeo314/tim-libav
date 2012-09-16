@@ -1006,6 +1006,7 @@ static void lfe_interpolation_fir(DCAContext *s, int decimation_select,
     }
 }
 
+#if FF_API_REQUEST_CHANNELS
 /* downmixing routines */
 #define MIX_REAR1(samples, si1, rs, coef)           \
     samples[i]     += samples[si1] * coef[rs][0];   \
@@ -1086,7 +1087,7 @@ static void dca_downmix(float *samples, int srcfmt,
         break;
     }
 }
-
+#endif // FF_API_REQUEST_CHANNELS
 
 #ifndef decode_blockcodes
 /* Very compact version of the block code decoder that does not use table
@@ -1283,10 +1284,12 @@ static int dca_filter_channels(DCAContext *s, int block_index)
                         M_SQRT1_2 * s->scale_bias /* pcm_to_double[s->source_pcm_res] */);
     }
 
+#if FF_API_REQUEST_CHANNELS
     /* Down mixing */
     if (s->avctx->request_channels == 2 && s->prim_channels > 2) {
         dca_downmix(s->samples, s->amode, s->downmix_coef, s->channel_order_tab);
     }
+#endif
 
     /* Generate LFE samples for this subsubframe FIXME!!! */
     if (s->output & DCA_LFE) {
@@ -1798,8 +1801,12 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
     if (s->amode < 16) {
         avctx->channel_layout = dca_core_channel_layout[s->amode];
 
+#if FF_API_REQUEST_CHANNELS
         if (s->xch_present && (!avctx->request_channels ||
                                avctx->request_channels > num_core_channels + !!s->lfe)) {
+#else
+        if (s->xch_present) {
+#endif
             avctx->channel_layout |= AV_CH_BACK_CENTER;
             if (s->lfe) {
                 avctx->channel_layout |= AV_CH_LOW_FREQUENCY;
@@ -1821,11 +1828,13 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
             s->channel_order_tab[channels - 1 - !!s->lfe] < 0)
             return AVERROR_INVALIDDATA;
 
+#if FF_API_REQUEST_CHANNELS
         if (avctx->request_channels == 2 && s->prim_channels > 2) {
             channels = 2;
             s->output = DCA_STEREO;
             avctx->channel_layout = AV_CH_LAYOUT_STEREO;
         }
+#endif
     } else {
         av_log(avctx, AV_LOG_ERROR, "Non standard configuration %d !\n", s->amode);
         return AVERROR_INVALIDDATA;
@@ -1926,11 +1935,13 @@ static av_cold int dca_decode_init(AVCodecContext *avctx)
         s->scale_bias     = 1.0;
     }
 
+#if FF_API_REQUEST_CHANNELS
     /* allow downmixing to stereo */
     if (avctx->channels > 0 && avctx->request_channels < avctx->channels &&
         avctx->request_channels == 2) {
         avctx->channels = avctx->request_channels;
     }
+#endif
 
     avcodec_get_frame_defaults(&s->frame);
     avctx->coded_frame = &s->frame;
