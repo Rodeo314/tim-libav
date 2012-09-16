@@ -339,6 +339,13 @@ typedef struct {
     int joint_scale_factor[DCA_PRIM_CHANNELS_MAX][DCA_SUBBANDS]; ///< joint subband scale factors
     int dynrange_coef;                                           ///< dynamic range coefficient
 
+    /* Core substream's embedded downmix coefficients (cf. ETSI TS 102 114 V1.3.1)
+     * Input:  primary audio channels (incl. LFE, if present)
+     * Output: downmix audio channels (up to 4, no LFE) */
+    uint8_t  core_downmix;                                       ///< embedded downmix coefficients available
+    uint8_t  core_downmix_mode;                                  ///< audio channel arrangement of embedded downmix
+    uint16_t core_downmix_codes[DCA_PRIM_CHANNELS_MAX + 1][4];   ///< codes for embedded downmix coefficients
+
     int high_freq_vq[DCA_PRIM_CHANNELS_MAX][DCA_SUBBANDS];       ///< VQ encoded high frequency subbands
 
     float lfe_data[2 * DCA_LFE_MAX * (DCA_BLOCKS_MAX + 4)];      ///< Low frequency effect data
@@ -1272,7 +1279,7 @@ static int dca_filter_channels(DCAContext *s, int block_index)
 
 static int dca_subframe_footer(DCAContext *s, int base_channel)
 {
-    int aux_data_count = 0, i;
+    int in, out, aux_data_count, aux_data_end, reserved;
 
     /*
      * Unpack optional information
@@ -1283,14 +1290,74 @@ static int dca_subframe_footer(DCAContext *s, int base_channel)
         if (s->timestamp)
             skip_bits_long(&s->gb, 32);
 
-        if (s->aux_data)
+        if (s->aux_data) {
             aux_data_count = get_bits(&s->gb, 6);
 
-        for (i = 0; i < aux_data_count; i++)
-            get_bits(&s->gb, 8);
+            // advance to the next DWORD (32-bit aligned position)
+            skip_bits_long(&s->gb, (-get_bits_count(&s->gb)) & 31);
+
+            aux_data_end = 8 * aux_data_count + get_bits_count(&s->gb);
+
+            if (get_bits_long(&s->gb, 32) != 0x9A1105A0) // nSYNCAUX
+                return AVERROR_INVALIDDATA;
+
+            if (get_bits1(&s->gb)) { // bAUXTimeStampFlag
+                av_log_ask_for_sample(s->avctx, "This file contains some "
+                                      "features we have not tested yet\n");
+                // advance to next 4-bit aligned position
+                skip_bits(&s->gb, (-get_bits_count(&s->gb)) & 4);
+                // 44 bits: nMSByte (8), nMarker (4), nLSByte (28), nMarker (4)
+                skip_bits_long(&s->gb, 44);
+            }
+
+            if ((s->core_downmix = get_bits1(&s->gb))) {
+                switch (get_bits(&s->gb, 3)) {
+                case 0: // 1/0 downmix
+                    s->core_downmix_mode = 0;
+                    break;
+                case 1: // Lo/Ro downmix
+                    s->core_downmix_mode = 2;
+                    break;
+                case 2: // Lt/Rt downmix
+                    s->core_downmix_mode = 4;
+                    break;
+                case 3: // 3/0 downmix
+                    s->core_downmix_mode = 5;
+                    break;
+                case 4: // 2/1 downmix
+                    s->core_downmix_mode = 6;
+                    break;
+                case 5: // 2/2 downmix
+                    s->core_downmix_mode = 8;
+                    break;
+                case 6: // 3/1 downmix
+                    s->core_downmix_mode = 7;
+                    break;
+                default:
+                    return AVERROR_INVALIDDATA;
+                }
+                for (out = 0; out < dca_channels[s->core_downmix_mode]; out++) {
+                    for (in = 0; in < s->prim_channels + !!s->lfe; in++) {
+                        s->core_downmix_codes[in][out] = get_bits(&s->gb, 9);
+                    }
+                }
+            }
+
+            align_get_bits(&s->gb);
+            skip_bits(&s->gb, 16); // nAUXCRC16
+
+            // there may be some additional data (reserved?)
+            if ((reserved = (aux_data_end - get_bits_count(&s->gb))) < 0)
+                return AVERROR_INVALIDDATA;
+            else if (reserved) {
+                av_log_ask_for_sample(s->avctx, "This file contains some "
+                                      "features we have not tested yet\n");
+                skip_bits_long(&s->gb, reserved);
+            }
+        }
 
         if (s->crc_present && s->dynrange)
-            get_bits(&s->gb, 16);
+            skip_bits(&s->gb, 16); // OCRC
     }
 
     return 0;
