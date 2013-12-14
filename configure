@@ -3934,7 +3934,7 @@ enabled openssl           && { check_lib openssl/ssl.h SSL_library_init -lssl -l
                                check_lib openssl/ssl.h SSL_library_init -lssl -lcrypto -lws2_32 -lgdi32 ||
                                die "ERROR: openssl not found"; }
 #fixme
-enabled qsv               && require msdk/mfxvideo.h
+#enabled qsv               && require "msdk/mfxvideo.h"
 
 if enabled gnutls; then
     { check_lib nettle/bignum.h nettle_mpz_get_str_256 -lnettle -lhogweed -lgmp && enable nettle; } ||
