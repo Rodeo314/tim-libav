@@ -85,12 +85,12 @@ int ff_qsv_nal_find_start_code(uint8_t * pb, size_t size)
 
 int ff_qsv_dec_init_clean(AVCodecContext *avctx)
 {
-     mfxStatus sts = MFX_ERR_NONE;
-     av_qsv_context *qsv = avctx->priv_data;
-     av_qsv_space *qsv_decode = qsv->dec_space;
-     av_qsv_context_clean(qsv);
-     av_freep(&avctx->priv_data);
+    av_qsv_context *qsv = avctx->priv_data;
+    av_qsv_context_clean(qsv);
+    av_freep(&avctx->priv_data);
+    return 0;
 }
+
 int ff_qsv_dec_init(AVCodecContext * avctx)
 {
     int ret = 0;
