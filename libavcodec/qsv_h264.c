@@ -329,17 +329,15 @@ av_cold int ff_qsv_decode_init(AVCodecContext * avctx)
         return AVERROR(ENOMEM);
 
     if (!(*qsv_config_context)) {
-        av_log(avctx, AV_LOG_INFO,
-               "Using default config for QSV decode\n");
+        av_log(avctx, AV_LOG_INFO, "Using default config for QSV decode\n");
         avctx->hwaccel_context = &av_qsv_default_config;
-    } else {
-        if ((*qsv_config_context)->io_pattern !=
-            MFX_IOPATTERN_OUT_OPAQUE_MEMORY
-            && (*qsv_config_context)->io_pattern !=
-            MFX_IOPATTERN_OUT_SYSTEM_MEMORY) {
-            av_log_missing_feature( avctx,"Only MFX_IOPATTERN_OUT_OPAQUE_MEMORY and MFX_IOPATTERN_OUT_SYSTEM_MEMORY are currently supported\n",0);
-            return AVERROR_PATCHWELCOME;
-        }
+    } else if ((*qsv_config_context)->io_pattern != MFX_IOPATTERN_OUT_OPAQUE_MEMORY &&
+               (*qsv_config_context)->io_pattern != MFX_IOPATTERN_OUT_SYSTEM_MEMORY) {
+        avpriv_report_missing_feature(avctx,
+                                      "Only MFX_IOPATTERN_OUT_OPAQUE_MEMORY"
+                                      " and MFX_IOPATTERN_OUT_SYSTEM_MEMORY"
+                                      " are currently supported\n");
+        return AVERROR_PATCHWELCOME;
     }
 
     qsv->qsv_config = avctx->hwaccel_context;
