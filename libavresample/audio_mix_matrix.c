@@ -191,10 +191,10 @@ int avresample_build_matrix(uint64_t in_layout, uint64_t out_layout,
             }
         } else if (out_layout & AV_CH_FRONT_LEFT) {
             if (matrix_encoding == AV_MATRIX_ENCODING_DOLBY) {
-                matrix[FRONT_LEFT ][BACK_LEFT ] -= surround_mix_level * M_SQRT1_2;
-                matrix[FRONT_LEFT ][BACK_RIGHT] -= surround_mix_level * M_SQRT1_2;
-                matrix[FRONT_RIGHT][BACK_LEFT ] += surround_mix_level * M_SQRT1_2;
-                matrix[FRONT_RIGHT][BACK_RIGHT] += surround_mix_level * M_SQRT1_2;
+                matrix[FRONT_LEFT ][BACK_LEFT ] -= surround_mix_level;
+                matrix[FRONT_LEFT ][BACK_RIGHT] -= surround_mix_level;
+                matrix[FRONT_RIGHT][BACK_LEFT ] += surround_mix_level;
+                matrix[FRONT_RIGHT][BACK_RIGHT] += surround_mix_level;
             } else if (matrix_encoding == AV_MATRIX_ENCODING_DPLII) {
                 matrix[FRONT_LEFT ][BACK_LEFT ] -= surround_mix_level * SQRT3_2;
                 matrix[FRONT_LEFT ][BACK_RIGHT] -= surround_mix_level * M_SQRT1_2;
@@ -227,10 +227,10 @@ int avresample_build_matrix(uint64_t in_layout, uint64_t out_layout,
             matrix[BACK_CENTER][SIDE_RIGHT] += M_SQRT1_2;
         } else if (out_layout & AV_CH_FRONT_LEFT) {
             if (matrix_encoding == AV_MATRIX_ENCODING_DOLBY) {
-                matrix[FRONT_LEFT ][SIDE_LEFT ] -= surround_mix_level * M_SQRT1_2;
-                matrix[FRONT_LEFT ][SIDE_RIGHT] -= surround_mix_level * M_SQRT1_2;
-                matrix[FRONT_RIGHT][SIDE_LEFT ] += surround_mix_level * M_SQRT1_2;
-                matrix[FRONT_RIGHT][SIDE_RIGHT] += surround_mix_level * M_SQRT1_2;
+                matrix[FRONT_LEFT ][SIDE_LEFT ] -= surround_mix_level;
+                matrix[FRONT_LEFT ][SIDE_RIGHT] -= surround_mix_level;
+                matrix[FRONT_RIGHT][SIDE_LEFT ] += surround_mix_level;
+                matrix[FRONT_RIGHT][SIDE_RIGHT] += surround_mix_level;
             } else if (matrix_encoding == AV_MATRIX_ENCODING_DPLII) {
                 matrix[FRONT_LEFT ][SIDE_LEFT ] -= surround_mix_level * SQRT3_2;
                 matrix[FRONT_LEFT ][SIDE_RIGHT] -= surround_mix_level * M_SQRT1_2;
