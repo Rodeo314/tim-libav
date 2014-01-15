@@ -181,14 +181,9 @@ int avresample_build_matrix(uint64_t in_layout, uint64_t out_layout,
             matrix[BACK_CENTER][BACK_RIGHT] += M_SQRT1_2;
         } else if (out_layout & AV_CH_SIDE_LEFT) {
             /* if side channels do not exist in the input, just copy back
-               channels to side channels, otherwise mix back into side */
-            if (in_layout & AV_CH_SIDE_LEFT) {
-                matrix[SIDE_LEFT ][BACK_LEFT ] += M_SQRT1_2;
-                matrix[SIDE_RIGHT][BACK_RIGHT] += M_SQRT1_2;
-            } else {
-                matrix[SIDE_LEFT ][BACK_LEFT ] += 1.0;
-                matrix[SIDE_RIGHT][BACK_RIGHT] += 1.0;
-            }
+               to side, otherwise mix back into side with the same weight */
+            matrix[SIDE_LEFT ][BACK_LEFT ] += 1.0;
+            matrix[SIDE_RIGHT][BACK_RIGHT] += 1.0;
         } else if (out_layout & AV_CH_FRONT_LEFT) {
             if (matrix_encoding == AV_MATRIX_ENCODING_DOLBY) {
                 matrix[FRONT_LEFT ][BACK_LEFT ] -= surround_mix_level;
@@ -214,14 +209,9 @@ int avresample_build_matrix(uint64_t in_layout, uint64_t out_layout,
     if (unaccounted & AV_CH_SIDE_LEFT) {
         if (out_layout & AV_CH_BACK_LEFT) {
             /* if back channels do not exist in the input, just copy side
-               channels to back channels, otherwise mix side into back */
-            if (in_layout & AV_CH_BACK_LEFT) {
-                matrix[BACK_LEFT ][SIDE_LEFT ] += M_SQRT1_2;
-                matrix[BACK_RIGHT][SIDE_RIGHT] += M_SQRT1_2;
-            } else {
-                matrix[BACK_LEFT ][SIDE_LEFT ] += 1.0;
-                matrix[BACK_RIGHT][SIDE_RIGHT] += 1.0;
-            }
+               to back, otherwise mix side into back with the same weight */
+            matrix[BACK_LEFT ][SIDE_LEFT ] += 1.0;
+            matrix[BACK_RIGHT][SIDE_RIGHT] += 1.0;
         } else if (out_layout & AV_CH_BACK_CENTER) {
             matrix[BACK_CENTER][SIDE_LEFT ] += M_SQRT1_2;
             matrix[BACK_CENTER][SIDE_RIGHT] += M_SQRT1_2;
