@@ -247,6 +247,17 @@ int avresample_build_matrix(uint64_t in_layout, uint64_t out_layout,
         } else
             return AVERROR_PATCHWELCOME;
     }
+    /* mix wide left/right into front left/right or center */
+    if (unaccounted & AV_CH_WIDE_LEFT) {
+        if (out_layout & AV_CH_FRONT_LEFT) {
+            matrix[FRONT_LEFT ][WIDE_LEFT ] += 1.0;
+            matrix[FRONT_RIGHT][WIDE_RIGHT] += 1.0;
+        } else if (out_layout & AV_CH_FRONT_CENTER) {
+            matrix[FRONT_CENTER][WIDE_LEFT ] += M_SQRT1_2;
+            matrix[FRONT_CENTER][WIDE_RIGHT] += M_SQRT1_2;
+        } else
+            return AVERROR_PATCHWELCOME;
+    }
     /* mix LFE into front left/right or center */
     if (unaccounted & AV_CH_LOW_FREQUENCY) {
         if (out_layout & AV_CH_FRONT_CENTER) {
