@@ -6,6 +6,7 @@ HEADERS = adler32.h                                                     \
           audio_fifo.h                                                  \
           audioconvert.h                                                \
           avassert.h                                                    \
+          avdownmix.h                                                   \
           avstring.h                                                    \
           avutil.h                                                      \
           base64.h                                                      \
@@ -59,6 +60,7 @@ OBJS = adler32.o                                                        \
        aes.o                                                            \
        atomic.o                                                         \
        audio_fifo.o                                                     \
+       avdownmix.o                                                      \
        avstring.o                                                       \
        base64.o                                                         \
        blowfish.o                                                       \
