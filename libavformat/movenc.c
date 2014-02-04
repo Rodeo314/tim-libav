@@ -752,6 +752,7 @@ static int mp4_get_codec_tag(AVFormatContext *s, MOVTrack *track)
         return 0;
 
     if      (track->enc->codec_id == AV_CODEC_ID_H264)      tag = MKTAG('a','v','c','1');
+    else if (track->enc->codec_id == AV_CODEC_ID_HEVC)      tag = MKTAG('h','v','c','1');
     else if (track->enc->codec_id == AV_CODEC_ID_AC3)       tag = MKTAG('a','c','-','3');
     else if (track->enc->codec_id == AV_CODEC_ID_DIRAC)     tag = MKTAG('d','r','a','c');
     else if (track->enc->codec_id == AV_CODEC_ID_MOV_TEXT)  tag = MKTAG('t','x','3','g');
@@ -2205,6 +2206,7 @@ static int mov_write_isml_manifest(AVIOContext *pb, MOVMuxContext *mov)
                 param_write_hex(pb, "CodecPrivateData", track->enc->extradata,
                                 track->enc->extradata_size);
             }
+            //fixme HEVC
             param_write_int(pb, "MaxWidth", track->enc->width);
             param_write_int(pb, "MaxHeight", track->enc->height);
             param_write_int(pb, "DisplayWidth", track->enc->width);
@@ -2593,6 +2595,7 @@ static int mov_write_ftyp_tag(AVIOContext *pb, AVFormatContext *s)
         ffio_wfourcc(pb, "iso2");
         if (has_h264)
             ffio_wfourcc(pb, "avc1");
+        //fixme HEVC
     }
 
     if (mov->mode == MODE_3GP)
@@ -2937,6 +2940,14 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
             avio_write(pb, reformatted_data, size);
         } else {
             size = ff_avc_parse_nal_units(pb, pkt->data, pkt->size);
+        }
+    } else if (enc->codec_id == AV_CODEC_ID_HEVC && trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {//fixme
+        /* from bytestream H.265, NAL reformating needed? */
+        if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
+            ff_hevc_parse_nal_units_buf(pkt->data, &reformatted_data, &size);
+            avio_write(pb, reformatted_data, size);
+        } else {
+            size = ff_hevc_parse_nal_units(pb, pkt->data, pkt->size);
         }
     } else {
         avio_write(pb, pkt->data, size);
