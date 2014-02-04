@@ -1073,6 +1073,44 @@ static int decode_audio(InputStream *ist, AVPacket *pkt, int *got_output)
         return ret;
     }
 
+    /* log AVDownmixInfo side data for the first frame */
+    static int dirty_counter = 0;
+    if (!dirty_counter) {
+        AVDownmixInfo *downmix_info;
+        if ((downmix_info = av_downmix_info_get_side_data(decoded_frame, 0))) {
+            switch (downmix_info->preferred_downmix_type)
+            {
+            case AV_DOWNMIX_TYPE_LORO:
+                av_log(NULL, AV_LOG_FATAL,
+                       "Preferred downmix:  Lo/Ro\n");
+                break;
+            case AV_DOWNMIX_TYPE_UNKNOWN:
+                av_log(NULL, AV_LOG_FATAL,
+                       "Preferred downmix:  Unknown\n");
+                break;
+            case AV_DOWNMIX_TYPE_DPLII:
+                av_log(NULL, AV_LOG_FATAL,
+                       "Preferred downmix:  Dolby Pro Logic II\n");
+                break;
+            case AV_DOWNMIX_TYPE_LTRT:
+                av_log(NULL, AV_LOG_FATAL,
+                       "Preferred downmix:  Lt/Rt (Dolby Surround)\n");
+                break;
+            default:
+                break;
+            }
+            av_log(NULL, AV_LOG_FATAL, "Center   mix level: %lf ltrt: %lf\n",
+                   downmix_info->center_mix_level,
+                   downmix_info->center_mix_level_ltrt);
+            av_log(NULL, AV_LOG_FATAL, "Surround mix level: %lf ltrt: %lf\n",
+                   downmix_info->surround_mix_level,
+                   downmix_info->surround_mix_level_ltrt);
+            av_log(NULL, AV_LOG_FATAL, "LFE      mix level: %lf\n",
+                   downmix_info->lfe_mix_level);
+        }
+        dirty_counter = 1;
+    }
+
     /* if the decoder provides a pts, use it instead of the last packet pts.
        the decoder could be delaying output by a packet or more. */
     if (decoded_frame->pts != AV_NOPTS_VALUE)
