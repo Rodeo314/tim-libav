@@ -30,6 +30,7 @@
 #include "avio.h"
 #include "isom.h"
 #include "avc.h"
+#include "hevc.h"
 #include "libavcodec/get_bits.h"
 #include "libavcodec/put_bits.h"
 #include "libavcodec/vc1.h"
@@ -685,6 +686,16 @@ static int mov_write_avcc_tag(AVIOContext *pb, MOVTrack *track)
     return update_size(pb, pos);
 }
 
+static int mov_write_hvcc_tag(AVIOContext *pb, MOVTrack *track)
+{
+    int64_t pos = avio_tell(pb);
+    
+    avio_wb32(pb, 0);
+    ffio_wfourcc(pb, "hvcC");
+    ff_isom_write_hvcc(pb, track->vos_data, track->vos_len);
+    return update_size(pb, pos);
+}
+
 /* also used by all avid codecs (dv, imx, meridien) and their variants */
 static int mov_write_avid_tag(AVIOContext *pb, MOVTrack *track)
 {
@@ -1035,6 +1046,8 @@ static int mov_write_video_tag(AVIOContext *pb, MOVTrack *track)
         mov_write_svq3_tag(pb);
     else if (track->enc->codec_id == AV_CODEC_ID_DNXHD)
         mov_write_avid_tag(pb, track);
+    else if (track->enc->codec_id == AV_CODEC_ID_HEVC)
+        mov_write_hvcc_tag(pb, track);
     else if (track->enc->codec_id == AV_CODEC_ID_H264) {
         mov_write_avcc_tag(pb, track);
         if (track->mode == MODE_IPOD)

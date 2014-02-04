@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavcodec/hevc.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
 #include "avio.h"
@@ -105,20 +106,19 @@ int ff_hevc_parse_nal_units_buf(const uint8_t *buf_in, uint8_t **buf, int *size)
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
     if (len > 6) {
-        /* check for h264 start code */
-        if (AV_RB32(data) == 0x00000001 ||
-            AV_RB24(data) == 0x000001) {
-            uint8_t *buf=NULL, *end, *start;
-            uint32_t sps_size=0, pps_size=0;
-            uint8_t *sps=0, *pps=0;
+        av_log(NULL, AV_LOG_FATAL, "%s, %s: %d\n", __FILE__, __FUNCTION__, __LINE__);//debug
+        /* check for H.265 start code */
+        if (AV_RB32(data) == 0x00000001 || AV_RB24(data) == 0x000001) {
+            uint32_t vps_size = 0, sps_size = 0, pps_size = 0;
+            uint8_t *buf = NULL, *end, *start, *vps = NULL, *sps = NULL, *pps = NULL;
 
             int ret = ff_hevc_parse_nal_units_buf(data, &buf, &len);
             if (ret < 0)
                 return ret;
             start = buf;
-            end = buf + len;
+            end   = buf + len;
 
-            /* look for sps and pps */
+            /* look for vps, sps and pps */
             while (end - buf > 4) {
                 uint32_t size;
                 uint8_t nal_type;
@@ -126,26 +126,27 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 buf += 4;
                 nal_type = buf[0] & 0x1f;
 
-                if (nal_type == 7) { /* SPS */
-                    sps = buf;
+                if        (nal_type == NAL_VPS) {
+                    vps      = buf;
+                    vps_size = size;
+                } else if (nal_type == NAL_SPS) {
+                    sps       = buf;
                     sps_size = size;
-                } else if (nal_type == 8) { /* PPS */
-                    pps = buf;
+                } else if (nal_type == NAL_PPS) {
+                    pps       = buf;
                     pps_size = size;
                 }
 
                 buf += size;
             }
 
-            if (!sps || !pps || sps_size < 4 || sps_size > UINT16_MAX || pps_size > UINT16_MAX)
-                return AVERROR_INVALIDDATA;
+            if (!vps || vps_size > UINT16_MAX ||
+                !sps || sps_size > UINT16_MAX || sps_size < 4 ||
+                !pps || pps_size > UINT16_MAX)
+                return AVERROR_INVALIDDATA;//fixme
 
-            avio_w8(pb, 1); /* version */
-            avio_w8(pb, sps[1]); /* profile */
-            avio_w8(pb, sps[2]); /* profile compat */
-            avio_w8(pb, sps[3]); /* level */
-            avio_w8(pb, 0xff); /* 6 bits reserved (111111) + 2 bits nal size length - 1 (11) */
-            avio_w8(pb, 0xe1); /* 3 bits reserved (111) + 5 bits number of sps (00001) */
+            avio_w8 (pb, 1); /* configurationVersion */
+            //fixme
 
             avio_wb16(pb, sps_size);
             avio_write(pb, sps, sps_size);
