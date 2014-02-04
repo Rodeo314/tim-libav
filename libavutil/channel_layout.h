@@ -117,6 +117,7 @@ enum AVDownmixType {
     AV_DOWNMIX_TYPE_UNKNOWN,
     AV_DOWNMIX_TYPE_LORO,
     AV_DOWNMIX_TYPE_LTRT,
+    AV_DOWNMIX_TYPE_DPLII,
     AV_DOWNMIX_TYPE_NB
 };
 
@@ -127,7 +128,7 @@ typedef struct AVDownmixInfo {
     double surround_mix_level;
     double surround_mix_level_ltrt;
     double lfe_mix_level;
-};
+} AVDownmixInfo;
 
 /**
  * @}
