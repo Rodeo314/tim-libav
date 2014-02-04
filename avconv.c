@@ -46,7 +46,7 @@
 #include "libavutil/libm.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/time.h"
-#include "libavutil/downmixinfo.h"
+#include "libavutil/downmix_info.h"
 #include "libavformat/os_support.h"
 
 # include "libavfilter/avfilter.h"
