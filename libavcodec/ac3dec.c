@@ -1493,15 +1493,15 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
         return AVERROR(ENOMEM);
     dmix_info = (AVDownmixInfo*)side_data->data;
     switch (s->preferred_downmix) {
-        case AC3_DMIXMOD_LTRT:
-            dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LTRT;
-            break;
-        case AC3_DMIXMOD_LORO:
-            dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LORO;
-            break;
-        default:
-            dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_UNKNOWN;
-            break;
+    case AC3_DMIXMOD_LTRT:
+        dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LTRT;
+        break;
+    case AC3_DMIXMOD_LORO:
+        dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LORO;
+        break;
+    default:
+        dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_UNKNOWN;
+        break;
     }
     dmix_info->center_mix_level        = gain_levels[s->       center_mix_level];
     dmix_info->center_mix_level_ltrt   = gain_levels[s->  center_mix_level_ltrt];
