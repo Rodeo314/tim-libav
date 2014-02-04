@@ -24,6 +24,8 @@
 
 #include <stdint.h>
 
+#include "frame.h"
+
 /**
  * @file
  * audio channel layout utility functions
@@ -114,6 +116,57 @@ enum AVMatrixEncoding {
 };
 
 /**
+ * Possible downmix types.
+ */
+enum AVDownmixType {
+    AV_DOWNMIX_TYPE_UNKNOWN, /**< Not indicated. */
+    AV_DOWNMIX_TYPE_LORO,    /**< Regular (Lo/Ro) 2-channel downmix. */
+    AV_DOWNMIX_TYPE_LTRT,    /**< Lt/Rt 2-channel downmix, Dolby Surround compatible. */
+    AV_DOWNMIX_TYPE_DPLII,   /**< Lt/Rt 2-channel downmix, Dolby Pro Logic II compatible. */
+    AV_DOWNMIX_TYPE_NB       /**< Number of downmix types. Not part of ABI. */
+};
+
+/**
+ * This structure describes optional metadata relevant to a downmix procedure.
+ */
+typedef struct AVDownmixInfo {
+    /**
+     * Type of downmix preferred by the mastering engineer.
+     */
+    enum AVDownmixType preferred_downmix_type;
+
+    /**
+     * Absolute scale factor representing the nominal level of the center
+     * channel during a regular downmix.
+     */
+    double center_mix_level;
+
+    /**
+     * Absolute scale factor representing the nominal level of the center
+     * channel during an Lt/Rt compatible downmix.
+     */
+    double center_mix_level_ltrt;
+
+    /**
+     * Absolute scale factor representing the nominal level of the surround
+     * channels during a regular downmix.
+     */
+    double surround_mix_level;
+
+    /**
+     * Absolute scale factor representing the nominal level of the surround
+     * channels during an Lt/Rt compatible downmix.
+     */
+    double surround_mix_level_ltrt;
+
+    /**
+     * Absolute scale factor representing the level at which the LFE data is
+     * mixed into L/R channels during downmixing.
+     */
+    double lfe_mix_level;
+} AVDownmixInfo;
+
+/**
  * @}
  */
 
@@ -178,6 +231,17 @@ uint64_t av_channel_layout_extract_channel(uint64_t channel_layout, int index);
  * @return channel name on success, NULL on error.
  */
 const char *av_get_channel_name(uint64_t channel);
+
+/**
+ * Obtain a frame's AV_FRAME_DATA_DOWNMIX_INFO side data.
+ *
+ * @param frame the frame for which the side data is to be obtained.
+ *
+ * @param create if set to 1 and side data is absent, create and add it to the frame.
+ *
+ * @return The AVDownmixInfo structure to be filled by caller.
+ */
+AVDownmixInfo *av_downmix_info_get_side_data(AVFrame *frame, int create);
 
 /**
  * @}
