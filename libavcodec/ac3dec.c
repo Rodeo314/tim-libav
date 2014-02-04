@@ -1484,7 +1484,7 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
      *
      * Note: LFE mix level (dB) = 10 - LFE mix level code
      */
-    if ((downmix_info = av_downmix_info_get_side_data(frame))) {
+    if ((downmix_info = av_downmix_info_get_side_data(frame, 1))) {
         switch (s->preferred_downmix) {
         case AC3_DMIXMOD_LTRT:
             downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LTRT;

@@ -1077,7 +1077,7 @@ static int decode_audio(InputStream *ist, AVPacket *pkt, int *got_output)
     static int dirty_counter = 0;
     if (!dirty_counter) {
         AVDownmixInfo *downmix_info;
-        if ((downmix_info = av_downmix_info_get_side_data(decoded_frame))) {
+        if ((downmix_info = av_downmix_info_get_side_data(decoded_frame, 0))) {
             switch (downmix_info->preferred_downmix_type)
             {
                 case AV_DOWNMIX_TYPE_UNKNOWN:

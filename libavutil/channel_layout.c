@@ -233,11 +233,13 @@ uint64_t av_channel_layout_extract_channel(uint64_t channel_layout, int index)
     return 0;
 }
 
-AVDownmixInfo *av_downmix_info_get_side_data(AVFrame *frame)
+AVDownmixInfo *av_downmix_info_get_side_data(AVFrame *frame, int create)
 {
-    AVFrameSideData *side_data = av_frame_get_side_data(frame,
-                                                        AV_FRAME_DATA_DOWNMIX_INFO);
-    if (!side_data)
+    AVFrameSideData *side_data;
+
+    side_data = av_frame_get_side_data(frame, AV_FRAME_DATA_DOWNMIX_INFO);
+
+    if (create && !side_data)
         side_data = av_frame_new_side_data(frame, AV_FRAME_DATA_DOWNMIX_INFO,
                                            sizeof(AVDownmixInfo));
 

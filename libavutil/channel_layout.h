@@ -235,13 +235,13 @@ const char *av_get_channel_name(uint64_t channel);
 /**
  * Obtain a frame's AV_FRAME_DATA_DOWNMIX_INFO side data.
  *
- * If the side data is absent, will create it and add it to the frame.
+ * @param frame the frame for which the side data is to be obtained.
  *
- * @param The frame on which the side data is added to.
+ * @param create if set to 1 and side data is absent, create and add it to the frame.
  *
  * @return The AVDownmixInfo structure to be filled by caller.
  */
-AVDownmixInfo *av_downmix_info_get_side_data(AVFrame *frame);
+AVDownmixInfo *av_downmix_info_get_side_data(AVFrame *frame, int create);
 
 /**
  * @}
