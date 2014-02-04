@@ -31,7 +31,7 @@
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/crc.h"
-#include "libavutil/downmixinfo.h"
+#include "libavutil/downmix_info.h"
 #include "libavutil/opt.h"
 #include "internal.h"
 #include "aac_ac3_parser.h"
