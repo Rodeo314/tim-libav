@@ -1308,6 +1308,7 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
     const uint8_t *channel_map;
     const float *output[AC3_MAX_CHANNELS];
     enum AVMatrixEncoding matrix_encoding;
+    AVDownmixInfo *downmix_info;
 
     /* copy input buffer to decoder context to avoid reading past the end
        of the buffer, which can be caused by a damaged input stream. */
@@ -1477,6 +1478,36 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
     }
     if ((ret = ff_side_data_update_matrix_encoding(frame, matrix_encoding)) < 0)
         return ret;
+
+    /*
+     * AVDownmixInfo
+     *
+     * Note: LFE mix level (dB) = 10 - LFE mix level code
+     */
+    if ((downmix_info = av_downmix_info_get_side_data(frame, 1))) {
+        switch (s->preferred_downmix) {
+        case AC3_DMIXMOD_LTRT:
+            downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LTRT;
+            break;
+        case AC3_DMIXMOD_LORO:
+            downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LORO;
+            break;
+        case AC3_DMIXMOD_DPLII:
+            downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_DPLII;
+            break;
+        default:
+            downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_UNKNOWN;
+            break;
+        }
+        downmix_info->center_mix_level        = gain_levels[s->       center_mix_level];
+        downmix_info->center_mix_level_ltrt   = gain_levels[s->  center_mix_level_ltrt];
+        downmix_info->surround_mix_level      = gain_levels[s->     surround_mix_level];
+        downmix_info->surround_mix_level_ltrt = gain_levels[s->surround_mix_level_ltrt];
+        if (s->lfe_mix_level_exists)
+            downmix_info->lfe_mix_level       = pow(10., (10 - s->lfe_mix_level) / 20.);
+        else
+            downmix_info->lfe_mix_level       = 0.; // -inf dB
+    }
 
     *got_frame_ptr = 1;
 
