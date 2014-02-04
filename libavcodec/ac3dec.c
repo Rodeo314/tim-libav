@@ -1308,6 +1308,7 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
     const uint8_t *channel_map;
     const float *output[AC3_MAX_CHANNELS];
     enum AVMatrixEncoding matrix_encoding;
+    AVDownmixInfo *downmix_info;
 
     /* copy input buffer to decoder context to avoid reading past the end
        of the buffer, which can be caused by a damaged input stream. */
@@ -1483,37 +1484,30 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
      *
      * Note: LFE mix level (dB) = 10 - LFE mix level code
      */
-    AVDownmixInfo   *dmix_info;
-    AVFrameSideData *side_data;
-    side_data = av_frame_get_side_data(frame, AV_FRAME_DATA_DOWNMIX_INFO);
-    if (!side_data)
-        side_data = av_frame_new_side_data(frame, AV_FRAME_DATA_DOWNMIX_INFO,
-                                           sizeof(AVDownmixInfo));
-    if (!side_data)
-        return AVERROR(ENOMEM);
-    dmix_info = (AVDownmixInfo*)side_data->data;
-    switch (s->preferred_downmix) {
-    case AC3_DMIXMOD_LTRT:
-        dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LTRT;
-        break;
-    case AC3_DMIXMOD_LORO:
-        dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LORO;
-        break;
-    case AC3_DMIXMOD_DPLII:
-        dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_DPLII;
-        break;
-    default:
-        dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_UNKNOWN;
-        break;
+    if ((downmix_info = av_downmix_info_get_side_data(frame))) {
+        switch (s->preferred_downmix) {
+        case AC3_DMIXMOD_LTRT:
+            downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LTRT;
+            break;
+        case AC3_DMIXMOD_LORO:
+            downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LORO;
+            break;
+        case AC3_DMIXMOD_DPLII:
+            downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_DPLII;
+            break;
+        default:
+            downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_UNKNOWN;
+            break;
+        }
+        downmix_info->center_mix_level        = gain_levels[s->       center_mix_level];
+        downmix_info->center_mix_level_ltrt   = gain_levels[s->  center_mix_level_ltrt];
+        downmix_info->surround_mix_level      = gain_levels[s->     surround_mix_level];
+        downmix_info->surround_mix_level_ltrt = gain_levels[s->surround_mix_level_ltrt];
+        if (s->lfe_mix_level_exists)
+            downmix_info->lfe_mix_level       = pow(10., (10 - s->lfe_mix_level) / 20.);
+        else
+            downmix_info->lfe_mix_level       = 0.; // -inf dB
     }
-    dmix_info->center_mix_level        = gain_levels[s->       center_mix_level];
-    dmix_info->center_mix_level_ltrt   = gain_levels[s->  center_mix_level_ltrt];
-    dmix_info->surround_mix_level      = gain_levels[s->     surround_mix_level];
-    dmix_info->surround_mix_level_ltrt = gain_levels[s->surround_mix_level_ltrt];
-    if (s->lfe_mix_level_exists)
-        dmix_info->lfe_mix_level       = pow(10., (10 - s->lfe_mix_level) / 20.);
-    else
-        dmix_info->lfe_mix_level       = 0.; // -inf dB
 
     *got_frame_ptr = 1;
 

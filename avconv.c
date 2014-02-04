@@ -1076,12 +1076,9 @@ static int decode_audio(InputStream *ist, AVPacket *pkt, int *got_output)
     /* log AVDownmixInfo side data for the first frame */
     static int dirty_counter = 0;
     if (!dirty_counter) {
-        AVDownmixInfo   *dmix_info;
-        AVFrameSideData *side_data;
-        if ((side_data = av_frame_get_side_data(decoded_frame,
-                                                AV_FRAME_DATA_DOWNMIX_INFO))) {
-            dmix_info = (AVDownmixInfo*)side_data->data;
-            switch (dmix_info->preferred_downmix_type)
+        AVDownmixInfo *downmix_info;
+        if ((downmix_info = av_downmix_info_get_side_data(decoded_frame))) {
+            switch (downmix_info->preferred_downmix_type)
             {
                 case AV_DOWNMIX_TYPE_UNKNOWN:
                     av_log(NULL, AV_LOG_FATAL, "preferred downmix:  Unknown\n");
@@ -1098,9 +1095,9 @@ static int decode_audio(InputStream *ist, AVPacket *pkt, int *got_output)
                 default:
                     break;
             }
-            av_log(NULL, AV_LOG_FATAL, "center   mix level: %lf ltrt: %lf\n", dmix_info->center_mix_level, dmix_info->center_mix_level_ltrt);
-            av_log(NULL, AV_LOG_FATAL, "surround mix level: %lf ltrt: %lf\n", dmix_info->surround_mix_level, dmix_info->surround_mix_level_ltrt);
-            av_log(NULL, AV_LOG_FATAL, "LFE      mix level: %lf\n", dmix_info->lfe_mix_level);
+            av_log(NULL, AV_LOG_FATAL, "center   mix level: %lf ltrt: %lf\n", downmix_info->center_mix_level,   downmix_info->center_mix_level_ltrt);
+            av_log(NULL, AV_LOG_FATAL, "surround mix level: %lf ltrt: %lf\n", downmix_info->surround_mix_level, downmix_info->surround_mix_level_ltrt);
+            av_log(NULL, AV_LOG_FATAL, "LFE      mix level: %lf\n",           downmix_info->lfe_mix_level);
         }
         dirty_counter = 1;
     }

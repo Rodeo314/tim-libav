@@ -29,6 +29,7 @@
 #include "avutil.h"
 #include "channel_layout.h"
 #include "common.h"
+#include "frame.h"
 
 static const char * const channel_names[] = {
     [0]  = "FL",        /* front left */
@@ -230,4 +231,18 @@ uint64_t av_channel_layout_extract_channel(uint64_t channel_layout, int index)
             return 1ULL << i;
     }
     return 0;
+}
+
+AVDownmixInfo *av_downmix_info_get_side_data(AVFrame *frame)
+{
+    AVFrameSideData *side_data = av_frame_get_side_data(frame,
+                                                        AV_FRAME_DATA_DOWNMIX_INFO);
+    if (!side_data)
+        side_data = av_frame_new_side_data(frame, AV_FRAME_DATA_DOWNMIX_INFO,
+                                           sizeof(AVDownmixInfo));
+
+    if (!side_data)
+        return NULL;
+
+    return (AVDownmixInfo*)side_data->data;
 }

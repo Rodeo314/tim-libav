@@ -24,6 +24,8 @@
 
 #include <stdint.h>
 
+#include "frame.h"
+
 /**
  * @file
  * audio channel layout utility functions
@@ -229,6 +231,17 @@ uint64_t av_channel_layout_extract_channel(uint64_t channel_layout, int index);
  * @return channel name on success, NULL on error.
  */
 const char *av_get_channel_name(uint64_t channel);
+
+/**
+ * Obtain a frame's AV_FRAME_DATA_DOWNMIX_INFO side data.
+ *
+ * If the side data is absent, will create it and add it to the frame.
+ *
+ * @param The frame on which the side data is added to.
+ *
+ * @return The AVDownmixInfo structure to be filled by caller.
+ */
+AVDownmixInfo *av_downmix_info_get_side_data(AVFrame *frame);
 
 /**
  * @}
