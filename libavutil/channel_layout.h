@@ -113,20 +113,54 @@ enum AVMatrixEncoding {
     AV_MATRIX_ENCODING_NB
 };
 
+/**
+ * Possible downmix types.
+ */
 enum AVDownmixType {
-    AV_DOWNMIX_TYPE_UNKNOWN,
-    AV_DOWNMIX_TYPE_LORO,
-    AV_DOWNMIX_TYPE_LTRT,
-    AV_DOWNMIX_TYPE_DPLII,
-    AV_DOWNMIX_TYPE_NB
+    AV_DOWNMIX_TYPE_UNKNOWN, /**< Not indicated. */
+    AV_DOWNMIX_TYPE_LORO,    /**< Regular 2-channel downmix. */
+    AV_DOWNMIX_TYPE_LTRT,    /**< 2-channel downmix, Dolby Surround compatible. */
+    AV_DOWNMIX_TYPE_DPLII,   /**< 2-channel downmix, Dolby Pro Logic II compatible. */
+    AV_DOWNMIX_TYPE_NB       /**< Number of downmix types. Not part of ABI. */
 };
 
+/**
+ * This structure describes optional metadata relevant to a downmix procedure.
+ */
 typedef struct AVDownmixInfo {
+    /**
+     * Type of downmix preferred by the mastering engineer.
+     */
     enum AVDownmixType preferred_downmix_type;
+
+    /**
+     * Absolute scale factor representing the nominal level of the center
+     * channel during a regular downmix.
+     */
     double center_mix_level;
+
+    /**
+     * Absolute scale factor representing the nominal level of the center
+     * channel during an Lt/Rt compatible downmix.
+     */
     double center_mix_level_ltrt;
+
+    /**
+     * Absolute scale factor representing the nominal level of the surround
+     * channels during a regular downmix.
+     */
     double surround_mix_level;
+
+    /**
+     * Absolute scale factor representing the nominal level of the surround
+     * channels during an Lt/Rt compatible downmix.
+     */
     double surround_mix_level_ltrt;
+
+    /**
+     * Absolute scale factor representing the level at which the LFE data is
+     * mixed into L/R channels during downmixing.
+     */
     double lfe_mix_level;
 } AVDownmixInfo;
 
