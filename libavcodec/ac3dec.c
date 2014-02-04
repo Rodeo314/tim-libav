@@ -1499,6 +1499,9 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
     case AC3_DMIXMOD_LORO:
         dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LORO;
         break;
+    case AC3_DMIXMOD_DPLII:
+        dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_DPLII;
+        break;
     default:
         dmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_UNKNOWN;
         break;
