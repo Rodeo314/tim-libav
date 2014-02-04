@@ -16,7 +16,7 @@ HEADERS = adler32.h                                                     \
           common.h                                                      \
           cpu.h                                                         \
           crc.h                                                         \
-          downmixinfo.h                                                 \
+          downmix_info.h                                                \
           error.h                                                       \
           eval.h                                                        \
           fifo.h                                                        \
@@ -68,7 +68,7 @@ OBJS = adler32.o                                                        \
        cpu.o                                                            \
        crc.o                                                            \
        des.o                                                            \
-       downmixinfo.o                                                    \
+       downmix_info.o                                                   \
        error.o                                                          \
        eval.o                                                           \
        fifo.o                                                           \

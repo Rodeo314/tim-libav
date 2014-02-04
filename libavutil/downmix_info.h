@@ -23,14 +23,27 @@
 
 #include "frame.h"
 
-//fixme add to group
+/**
+ * @file
+ * audio downmix medatata
+ */
+
+/**
+ * @addtogroup lavu_audio
+ * @{
+ */
+
+/**
+ * @defgroup downmix_info Audio downmix metadata
+ * @{
+ */
 
 /**
  * Possible downmix types.
  */
 enum AVDownmixType {
     AV_DOWNMIX_TYPE_UNKNOWN, /**< Not indicated. */
-    AV_DOWNMIX_TYPE_LORO,    /**< Regular (Lo/Ro) 2-channel downmix. */
+    AV_DOWNMIX_TYPE_LORO,    /**< Lo/Ro 2-channel downmix (Stereo). */
     AV_DOWNMIX_TYPE_LTRT,    /**< Lt/Rt 2-channel downmix, Dolby Surround compatible. */
     AV_DOWNMIX_TYPE_DPLII,   /**< Lt/Rt 2-channel downmix, Dolby Pro Logic II compatible. */
     AV_DOWNMIX_TYPE_NB       /**< Number of downmix types. Not part of ABI. */
@@ -81,10 +94,18 @@ typedef struct AVDownmixInfo {
  *
  * The side data is created and added to the frame if it's absent.
  *
- * @param the frame for which the side data is to be obtained.
+ * @param frame the frame for which the side data is to be obtained.
  *
  * @return the AVDownmixInfo structure to be edited by the caller.
  */
 AVDownmixInfo *av_downmix_info_update_side_data(AVFrame *frame);
+
+/**
+ * @}
+ */
+
+/**
+ * @}
+ */
 
 #endif /* AVUTIL_DOWNMIX_INFO_H */
