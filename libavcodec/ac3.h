@@ -109,7 +109,7 @@ typedef enum AC3PreferredStereoDownmixMode {
     AC3_DMIXMOD_NOTINDICATED = 0,
     AC3_DMIXMOD_LTRT,
     AC3_DMIXMOD_LORO,
-    AC3_DMIXMOD_RESERVED
+    AC3_DMIXMOD_DPLII
 } AC3PreferredStereoDownmixMode;
 
 typedef struct AC3BitAllocParameters {
