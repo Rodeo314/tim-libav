@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef AVFORMAT_hevc_H
-#define AVFORMAT_hevc_H
+#ifndef AVFORMAT_HEVC_H
+#define AVFORMAT_HEVC_H
 
 #include <stdint.h>
 #include "avio.h"
@@ -30,4 +30,4 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len);
 const uint8_t *ff_hevc_find_startcode(const uint8_t *p, const uint8_t *end);
 int ff_hevc_write_annexb_extradata(const uint8_t *in, uint8_t **buf, int *size);
 
-#endif /* AVFORMAT_hevc_H */
+#endif /* AVFORMAT_HEVC_H */
