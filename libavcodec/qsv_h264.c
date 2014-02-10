@@ -40,6 +40,8 @@ static av_qsv_config av_qsv_default_config = {
     .additional_buffers = 0,
     .sync_need          = 0,
     .impl_requested     = MFX_IMPL_HARDWARE,
+    .min_version_major  = AV_QSV_MSDK_VERSION_MAJOR,
+    .min_version_minor  = AV_QSV_MSDK_VERSION_MINOR,
     .usage_threaded     = 0,
     .allocators         = 0,
 };
@@ -104,11 +106,11 @@ int ff_qsv_dec_init(AVCodecContext * avctx)
     av_qsv_space *qsv_decode = qsv->dec_space;
     av_qsv_config *qsv_config_context = avctx->hwaccel_context;
 
-    qsv->impl = qsv_config_context->impl_requested;
+    qsv->impl      = qsv_config_context->impl_requested;
+    qsv->ver.Major = qsv_config_context->min_version_major;
+    qsv->ver.Minor = qsv_config_context->min_version_minor;
 
     memset(&qsv->mfx_session, 0, sizeof(mfxSession));
-    qsv->ver.Major = AV_QSV_MSDK_VERSION_MAJOR;
-    qsv->ver.Minor = AV_QSV_MSDK_VERSION_MINOR;
 
     sts = MFXInit(qsv->impl, &qsv->ver, &qsv->mfx_session);
     AV_QSV_CHECK_RESULT(sts, MFX_ERR_NONE, sts);

@@ -414,6 +414,15 @@ typedef struct av_qsv_config {
     int impl_requested;
 
     /**
+     * Minimum Media SDK version needed
+     *
+     * - encoding: Set by user.
+     * - decoding: Set by user.
+     */
+    int min_version_major;
+    int min_version_minor;
+
+    /**
      * if QSV usage is multithreaded.
      * Format: Yes/No, 1/0
      *
