@@ -190,6 +190,7 @@ enum AVPixelFormat {
     AV_PIX_FMT_NV16,         ///< interleaved chroma YUV 4:2:2, 16bpp, (1 Cr & Cb sample per 2x1 Y samples)
     AV_PIX_FMT_NV20LE,       ///< interleaved chroma YUV 4:2:2, 20bpp, (1 Cr & Cb sample per 2x1 Y samples), little-endian
     AV_PIX_FMT_NV20BE,       ///< interleaved chroma YUV 4:2:2, 20bpp, (1 Cr & Cb sample per 2x1 Y samples), big-endian
+    AV_PIX_FMT_QSV_H264,     ///< H.264 HW decoding with QSV, data[2] contains qsv_atom information for MFX_IOPATTERN_OUT_OPAQUE_MEMORY, MFX_IOPATTERN_OUT_VIDEO_MEMORY
     AV_PIX_FMT_NB,        ///< number of pixel formats, DO NOT USE THIS if you want to link with shared libav* because the number of formats might differ between versions
 
 #if FF_API_PIX_FMT
