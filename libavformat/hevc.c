@@ -83,6 +83,10 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 return AVERROR_INVALIDDATA;
             }
 
+            av_log(NULL, AV_LOG_FATAL, "general_profile_space: %d\n", (sps[1] & 0xc0) >> 6);
+            av_log(NULL, AV_LOG_FATAL, "general_tier_flag:     %d\n", (sps[1] & 0x20) >> 5);
+            av_log(NULL, AV_LOG_FATAL, "general_profile_idc:   %d\n", (sps[1] & 0x1f));
+            av_log(NULL, AV_LOG_FATAL, "general_level_idc:     %d\n", sps[12]);
             avio_w8(pb,      1 ); /* configurationVersion */
             avio_w8(pb, sps[ 1]); /* general_profile_space, general_tier_flag, general_profile_idc */
             avio_w8(pb, sps[ 2]); /* general_profile_compatibility_flags 00..07 */
