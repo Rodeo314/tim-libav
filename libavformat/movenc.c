@@ -2944,10 +2944,10 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
     } else if (enc->codec_id == AV_CODEC_ID_HEVC && trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {//fixme
         /* from bytestream H.265, NAL reformating needed? */
         if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
-            ff_hevc_parse_nal_units_buf(pkt->data, &reformatted_data, &size);
+            ff_avc_parse_nal_units_buf(pkt->data, &reformatted_data, &size);
             avio_write(pb, reformatted_data, size);
         } else {
-            size = ff_hevc_parse_nal_units(pb, pkt->data, pkt->size);
+            size = ff_avc_parse_nal_units(pb, pkt->data, pkt->size);
         }
     } else {
         avio_write(pb, pkt->data, size);

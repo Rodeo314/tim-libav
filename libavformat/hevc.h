@@ -24,10 +24,7 @@
 #include <stdint.h>
 #include "avio.h"
 
-int ff_hevc_parse_nal_units(AVIOContext *s, const uint8_t *buf, int size);
-int ff_hevc_parse_nal_units_buf(const uint8_t *buf_in, uint8_t **buf, int *size);
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len);
-const uint8_t *ff_hevc_find_startcode(const uint8_t *p, const uint8_t *end);
 int ff_hevc_write_annexb_extradata(const uint8_t *in, uint8_t **buf, int *size);
 
 #endif /* AVFORMAT_HEVC_H */
