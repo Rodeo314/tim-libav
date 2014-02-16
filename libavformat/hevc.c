@@ -26,11 +26,12 @@
 #include "hevc.h"
 
 #define HEVC_DEBUG_LOG(str, ...) av_log(NULL, AV_LOG_FATAL, "%s, %s: %d - " str, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+#define SPS_MIN_SIZE 13
 
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
     HEVC_DEBUG_LOG("data: %p, len: %d\n", data, len);
-    if (len > 6) {
+    if (len > SPS_MIN_SIZE + 2) {
         /* check for H.265 start code */
         if (AV_RB32(data) == 0x00000001 || AV_RB24(data) == 0x000001) {
             uint32_t vps_size = 0, sps_size = 0, pps_size = 0;
@@ -48,7 +49,7 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 uint8_t nal_type;
                 size = FFMIN(AV_RB32(buf), end - buf - 4);
                 buf += 4;
-                nal_type = (buf[0] >> 1) & 63;
+                nal_type = (buf[0] >> 1) & 0x3f;
 
                 switch (nal_type) {
                 case NAL_VPS:
@@ -74,7 +75,7 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             }
 
             if (!vps || vps_size > UINT16_MAX ||
-                !sps || sps_size > UINT16_MAX ||
+                !sps || sps_size > UINT16_MAX || sps_size < SPS_MIN_SIZE ||
                 !pps || pps_size > UINT16_MAX) {
                 av_log(NULL, AV_LOG_ERROR, "vps: %p size: %"PRIu32"\n", vps, vps_size);//fixme
                 av_log(NULL, AV_LOG_ERROR, "sps: %p size: %"PRIu32"\n", sps, sps_size);//fixme
@@ -82,15 +83,55 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 return AVERROR_INVALIDDATA;
             }
 
-            avio_w8 (pb, 1); /* configurationVersion */
-            //fixme
-
-            avio_wb16(pb, sps_size);
-            avio_write(pb, sps, sps_size);
-            avio_w8(pb, 1); /* number of pps */
-            avio_wb16(pb, pps_size);
-            avio_write(pb, pps, pps_size);
-            av_free(start);
+            avio_w8(pb,      1 ); /* configurationVersion */
+            avio_w8(pb, sps[ 1]); /* general_profile_space, general_tier_flag, general_profile_idc */
+            avio_w8(pb, sps[ 2]); /* general_profile_compatibility_flags 00..07 */
+            avio_w8(pb, sps[ 3]); /* general_profile_compatibility_flags 08..15 */
+            avio_w8(pb, sps[ 4]); /* general_profile_compatibility_flags 16..23 */
+            avio_w8(pb, sps[ 5]); /* general_profile_compatibility_flags 24..31 */
+            avio_w8(pb, sps[ 6]); /* general_constraint_indicator_flags  00..07 */
+            avio_w8(pb, sps[ 7]); /* general_constraint_indicator_flags  08..15 */
+            avio_w8(pb, sps[ 8]); /* general_constraint_indicator_flags  16..23 */
+            avio_w8(pb, sps[ 9]); /* general_constraint_indicator_flags  24..31 */
+            avio_w8(pb, sps[10]); /* general_constraint_indicator_flags  32..39 */
+            avio_w8(pb, sps[11]); /* general_constraint_indicator_flags  40..47 */
+            avio_w8(pb, sps[12]); /* general_level_idc */
+            /*
+             *          bit(4)  reserved = ‘1111’b;
+             * unsigned int(12) min_spatial_segmentation_idc;
+             *
+             *          bit(6)  reserved = ‘111111’b;
+             * unsigned int(2)  parallelismType;
+             *
+             *          bit(6)  reserved = ‘111111’b;
+             * unsigned int(2)  chromaFormat;
+             *
+             *          bit(5)  reserved = ‘11111’b;
+             * unsigned int(3)  bitDepthLumaMinus8;
+             *
+             *          bit(5)  reserved = ‘11111’b;
+             * unsigned int(3)  bitDepthChromaMinus8;
+             *
+             *          bit(16) avgFrameRate;
+             *
+             * bit(2)           constantFrameRate;
+             * bit(3)           numTemporalLayers;
+             * bit(1)           temporalIdNested;
+             * unsigned int(2)  lengthSizeMinusOne;
+             *
+             * unsigned int(8)  numOfArrays;
+             *
+             * for (j = 0; j < numOfArrays; j++) {
+             *     bit(1) array_completeness;
+             *     unsigned int(1) reserved = 0;
+             *     unsigned int(6) NAL_unit_type;
+             *     unsigned int(16) numNalus;
+             *     for (i = 0; i < numNalus; i++) {
+             *         unsigned int(16) nalUnitLength;
+             *         bit(8*nalUnitLength) nalUnit;
+             *     }
+             * }
+             */
         } else {
             avio_write(pb, data, len);
         }
