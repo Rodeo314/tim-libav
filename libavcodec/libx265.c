@@ -38,8 +38,6 @@ typedef struct libx265Context {
 
     x265_encoder *encoder;
     x265_param   *params;
-    uint8_t      *header;
-    int           header_size;
 
     char *preset;
     char *tune;
@@ -66,7 +64,7 @@ static av_cold int libx265_encode_close(AVCodecContext *avctx)
     libx265Context *ctx = avctx->priv_data;
 
     av_frame_free(&avctx->coded_frame);
-    av_freep(&ctx->header);
+    av_freep(&avctx->extradata);
 
     x265_param_free(ctx->params);
 
@@ -188,17 +186,17 @@ static av_cold int libx265_encode_init(AVCodecContext *avctx)
     }
 
     for (i = 0; i < nnal; i++)
-        ctx->header_size += nal[i].sizeBytes;
+        avctx->extradata_size += nal[i].sizeBytes;
 
-    ctx->header = av_malloc(ctx->header_size);
-    if (!ctx->header) {
+    avctx->extradata = av_malloc(avctx->extradata_size);
+    if (!avctx->extradata) {
         av_log(avctx, AV_LOG_ERROR,
-               "Cannot allocate HEVC header of size %d.\n", ctx->header_size);
+               "Cannot allocate HEVC header of size %d.\n", avctx->extradata_size);
         libx265_encode_close(avctx);
         return AVERROR(ENOMEM);
     }
 
-    buf = ctx->header;
+    buf = avctx->extradata;
     for (i = 0; i < nnal; i++) {
         memcpy(buf, nal[i].payload, nal[i].sizeBytes);
         buf += nal[i].sizeBytes;
@@ -243,7 +241,7 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     for (i = 0; i < nnal; i++)
         payload += nal[i].sizeBytes;
 
-    payload += ctx->header_size;
+    payload += avctx->extradata_size;
 
     ret = ff_alloc_packet(pkt, payload);
     if (ret < 0) {
@@ -252,12 +250,12 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
     dst = pkt->data;
 
-    if (ctx->header) {
-        memcpy(dst, ctx->header, ctx->header_size);
-        dst += ctx->header_size;
+    if (avctx->extradata) {
+        memcpy(dst, avctx->extradata, avctx->extradata_size);
+        dst += avctx->extradata_size;
 
-        av_freep(&ctx->header);
-        ctx->header_size = 0;
+        av_freep(&avctx->extradata_size);
+        avctx->extradata_size = 0;
     }
 
     for (i = 0; i < nnal; i++) {
