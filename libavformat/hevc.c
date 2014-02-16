@@ -24,8 +24,12 @@
 #include "avio.h"
 #include "hevc.h"
 
+#define HEVC_DEBUG()             av_log(NULL, AV_LOG_FATAL, "%s, %s: %d\n",           __FILE__, __FUNCTION__, __LINE__)
+#define HEVC_DEBUG_LOG(str, ...) av_log(NULL, AV_LOG_FATAL, "%s, %s: %d - " str "\n", __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+
 static const uint8_t *ff_hevc_find_startcode_internal(const uint8_t *p, const uint8_t *end)
 {
+    HEVC_DEBUG();
     const uint8_t *a = p + 4 - ((intptr_t)p & 3);
 
     for (end -= 3; p < a && p < end; p++) {
@@ -35,8 +39,8 @@ static const uint8_t *ff_hevc_find_startcode_internal(const uint8_t *p, const ui
 
     for (end -= 3; p < end; p += 4) {
         uint32_t x = *(const uint32_t*)p;
-//      if ((x - 0x01000100) & (~x) & 0x80008000) // little endian
-//      if ((x - 0x00010001) & (~x) & 0x00800080) // big endian
+//      if ((x - 0x01000100) & (~x) & 0x80008000)   // little endian
+//      if ((x - 0x00010001) & (~x) & 0x00800080)   // big endian
         if ((x - 0x01010101) & (~x) & 0x80808080) { // generic
             if (p[1] == 0) {
                 if (p[0] == 0 && p[2] == 1)
@@ -61,14 +65,18 @@ static const uint8_t *ff_hevc_find_startcode_internal(const uint8_t *p, const ui
     return end + 3;
 }
 
-const uint8_t *ff_hevc_find_startcode(const uint8_t *p, const uint8_t *end){
+const uint8_t *ff_hevc_find_startcode(const uint8_t *p, const uint8_t *end)
+{
+    HEVC_DEBUG();
     const uint8_t *out= ff_hevc_find_startcode_internal(p, end);
-    if(p<out && out<end && !out[-1]) out--;
+    if (p < out && out < end && !out[-1])
+        out--;
     return out;
 }
 
 int ff_hevc_parse_nal_units(AVIOContext *pb, const uint8_t *buf_in, int size)
 {
+    HEVC_DEBUG();
     const uint8_t *p = buf_in;
     const uint8_t *end = p + size;
     const uint8_t *nal_start, *nal_end;
@@ -91,6 +99,7 @@ int ff_hevc_parse_nal_units(AVIOContext *pb, const uint8_t *buf_in, int size)
 
 int ff_hevc_parse_nal_units_buf(const uint8_t *buf_in, uint8_t **buf, int *size)
 {
+    HEVC_DEBUG();
     AVIOContext *pb;
     int ret = avio_open_dyn_buf(&pb);
     if(ret < 0)
@@ -105,8 +114,8 @@ int ff_hevc_parse_nal_units_buf(const uint8_t *buf_in, uint8_t **buf, int *size)
 
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
+    HEVC_DEBUG_LOG("data: %p, len: %d", data, len);
     if (len > 6) {
-        av_log(NULL, AV_LOG_FATAL, "%s, %s: %d\n", __FILE__, __FUNCTION__, __LINE__);//debug
         /* check for H.265 start code */
         if (AV_RB32(data) == 0x00000001 || AV_RB24(data) == 0x000001) {
             uint32_t vps_size = 0, sps_size = 0, pps_size = 0;
@@ -142,8 +151,12 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 
             if (!vps || vps_size > UINT16_MAX ||
                 !sps || sps_size > UINT16_MAX || sps_size < 4 ||
-                !pps || pps_size > UINT16_MAX)
-                return AVERROR_INVALIDDATA;//fixme
+                !pps || pps_size > UINT16_MAX) {
+                av_log(NULL, AV_LOG_ERROR, "vps: %p size: %"PRIu32"\n", vps, vps_size);//fixme
+                av_log(NULL, AV_LOG_ERROR, "sps: %p size: %"PRIu32"\n", sps, sps_size);//fixme
+                av_log(NULL, AV_LOG_ERROR, "pps: %p size: %"PRIu32"\n", pps, pps_size);//fixme
+                return AVERROR_INVALIDDATA;
+            }
 
             avio_w8 (pb, 1); /* configurationVersion */
             //fixme
