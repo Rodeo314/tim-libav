@@ -46,6 +46,16 @@ typedef struct libx265Context {
     char *x265_opts;
 } libx265Context;
 
+static int binar_ize(uint8_t n)
+{
+    int i, ret = 0;
+    for (i = 0; i < 8; i++) {
+        if (n & (1 << i))
+            ret += (int)pow(10, i);
+    }
+    return ret;
+}
+
 static int is_keyframe(NalUnitType naltype)
 {
     switch (naltype) {
@@ -205,11 +215,43 @@ static av_cold int libx265_encode_init(AVCodecContext *avctx)
         memcpy(buf, nal[i].payload, nal[i].sizeBytes);
         buf += nal[i].sizeBytes;
     }
+
+    av_log(NULL, AV_LOG_FATAL, "\n");
     buf = avctx->extradata;
     for (i = 0; i < nnal; i++) {
         memcpy(buf, nal[i].payload, nal[i].sizeBytes);
         buf += nal[i].sizeBytes;
+        for (int j = 0; j < nal[i].sizeBytes; j++) {
+            switch (nal[i].type) {
+                case 32:
+                    av_log(NULL, AV_LOG_FATAL,
+                           "vps[%2d]: %3d, 0x%02x, %04d %04d\n", j,
+                           nal[i].payload[j], nal[i].payload[j],
+                           binar_ize((nal[i].payload[j] & 0xf0) >> 4),
+                           binar_ize((nal[i].payload[j] & 0x0f)));
+                    break;
+                case 33:
+                    av_log(NULL, AV_LOG_FATAL,
+                           "sps[%2d]: %3d, 0x%02x, %04d %04d\n", j,
+                           nal[i].payload[j], nal[i].payload[j],
+                           binar_ize((nal[i].payload[j] & 0xf0) >> 4),
+                           binar_ize((nal[i].payload[j] & 0x0f)));
+                    break;
+                case 34:
+                    av_log(NULL, AV_LOG_FATAL,
+                           "pps[%2d]: %3d, 0x%02x, %04d %04d\n", j,
+                           nal[i].payload[j], nal[i].payload[j],
+                           binar_ize((nal[i].payload[j] & 0xf0) >> 4),
+                           binar_ize((nal[i].payload[j] & 0x0f)));
+                    break;
+                default:
+                    av_log(NULL, AV_LOG_FATAL, "NAL with ID %d\n", nal[i].type);
+                    break;
+            }
+        }
+        av_log(NULL, AV_LOG_FATAL, "\n");
     }
+    av_log(NULL, AV_LOG_FATAL, "\n");
 
     return 0;
 }
