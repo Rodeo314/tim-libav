@@ -101,14 +101,28 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 
             /* look for vps, sps and pps */
             while (end - buf > 4) {
+                int ret;
                 uint32_t size;
                 uint8_t nal_type;
+                GetBitContext gb;
                 size = FFMIN(AV_RB32(buf), end - buf - 4);
                 buf += 4;
-                nal_type = (buf[0] >> 1) & 0x3f;
 
-                // forbidden bit
-                if (buf[0] & 0x80)
+                ret = init_get_bits8(&gb, buf, size);
+                if (ret < 0)
+                    return ret;
+
+                // forbidden_zero_bit
+                if (get_bits1(&gb) != 0)
+                    return AVERROR_INVALIDDATA;
+
+                nal_type = get_bits(&gb, 6);
+
+                // nuh_layer_id
+                skip_bits(&gb, 6);
+
+                // nuh_temporal_id_plus1
+                if (!get_bits(&gb, 3))
                     return AVERROR_INVALIDDATA;
 
                 switch (nal_type) {
