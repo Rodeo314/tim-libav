@@ -106,6 +106,10 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 buf += 4;
                 nal_type = (buf[0] >> 1) & 0x3f;
 
+                // forbidden bit
+                if (buf[0] & 0x80)
+                    return AVERROR_INVALIDDATA;
+
                 switch (nal_type) {
                 case NAL_VPS:
                     vps      = buf;
