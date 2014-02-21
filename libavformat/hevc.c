@@ -77,15 +77,25 @@ static void dump_profile_tier_level(const char *buf_name, uint8_t *buf, int inde
         av_log(NULL, AV_LOG_FATAL, "%s index: %02d\n", buf_name, ++index);
     }
     av_log(NULL, AV_LOG_FATAL, "general_level_idc:                      %3d\n", buf[index]);
-    for(i = 0; i < maxNumSubLayersMinus1; i++) {
-        //fixme: dump that too
-        continue;
-    }
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
 
 typedef struct HEVCDecoderConfigurationRecord {
-    //fixme
+    uint8_t  general_profile_space;
+    uint8_t  general_tier_flag;
+    uint8_t  general_profile_idc;
+    uint32_t general_profile_compatibility_flags;
+    uint64_t general_constraint_indicator_flags;
+    uint8_t  general_level_idc;
+    uint16_t min_spatial_segmentation_idc;
+    uint8_t  parallelismType;
+    uint8_t  chromaFormat;
+    uint8_t  bitDepthLumaMinus8;
+    uint8_t  bitDepthChromaMinus8;
+    uint16_t avgFrameRate;
+    uint8_t  constantFrameRate;
+    uint8_t  numTemporalLayers;
+    uint8_t  temporalIdNested;
 } HEVCDecoderConfigurationRecord;
 
 static void parse_nal_header(GetBitContext *gb, uint8_t *nal_type)
@@ -143,13 +153,95 @@ static void parse_ptl(GetBitContext *gb, PTL *ptl, int max_sub_layers_minus1)
     }
 }
 
+static void skip_scaling_list_data(GetBitContext *gb)
+{
+    int i, j, k, num_coeffs;
+
+    for (i = 0; i < 4; i++)
+        for (j = 0; j < (i == 3 ? 2 : 6); j++)
+            if (!get_bits1(gb))         // scaling_list_pred_mode_flag[i][j]
+                get_ue_golomb_long(gb); // scaling_list_pred_matrix_id_delta[i][j]
+            else {
+                num_coeffs = FFMIN(64, 1 << (4 + (i << 1)));
+                if (i > 1)
+                    get_se_golomb(gb); // scaling_list_dc_coef_minus8[i-2][j]
+                for (k = 0; k < num_coeffs; k++)
+                    get_se_golomb(gb); // scaling_list_delta_coef
+            }
+}
+
+static int decode_rps(GetBitContext *gb, int rps_idx, int num_rps,
+                      int num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT])
+{
+    int i;
+
+    if (rps_idx && get_bits1(gb)) { // inter_ref_pic_set_prediction_flag
+        // this should only happen for slice headers, and this isn't one
+        if (rps_idx >= num_rps)
+            return AVERROR_INVALIDDATA;
+
+        skip_bits1        (gb); // delta_rps_sign
+        get_ue_golomb_long(gb); // abs_delta_rps_minus1
+
+        num_delta_pocs[rps_idx] = 0;
+
+        /*
+         * From libavcodec/hevc_ps.c:
+         *
+         * if (is_slice_header) {
+         *    //foo
+         * } else
+         *     rps_ridx = &sps->st_rps[rps - sps->st_rps - 1];
+         *
+         * where:
+         * rps:             &sps->st_rps[rps_idx]
+         * sps->st_rps:     &sps->st_rps[0]
+         * is_slice_header: rps_idx == num_rps
+         *
+         * thus:
+         * if (num_rps != rps_idx)
+         *     rps_ridx = &sps->st_rps[rps_idx - 1];
+         *
+         * NumDeltaPocs[RefRpsIdx]: num_delta_pocs[rps_idx - 1]
+         */
+        for (i = 0; i < num_delta_pocs[rps_idx - 1]; i++) {
+            uint8_t use_delta_flag = 0;
+            uint8_t used_by_curr_pic_flag = get_bits1(gb);
+            if (!used_by_curr_pic_flag)
+                use_delta_flag = get_bits1(gb);
+
+            if (used_by_curr_pic_flag || use_delta_flag)
+                num_delta_pocs[rps_idx]++;
+        }
+    } else {
+        unsigned int num_negative_pics = get_ue_golomb_long(gb);
+        unsigned int num_positive_pics = get_ue_golomb_long(gb);
+
+        num_delta_pocs[rps_idx] = num_negative_pics + num_positive_pics;
+
+        for (i = 0; i < num_negative_pics; i++) {
+            get_ue_golomb_long(gb); // delta_poc_s0_minus1[rps_idx]
+            skip_bits1        (gb); // used_by_curr_pic_s0_flag[rps_idx]
+        }
+
+        for (i = 0; i < num_positive_pics; i++) {
+            get_ue_golomb_long(gb); // delta_poc_s1_minus1[rps_idx]
+            skip_bits1        (gb); // used_by_curr_pic_s1_flag[rps_idx]
+        }
+    }
+
+    return 0;
+}
+
 static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
                             HEVCDecoderConfigurationRecord *hvcc)
 {
     PTL ptl;
     uint8_t nal_type;
     GetBitContext gb;
-    int ret, sps_max_sub_layers_minus1;
+    int i, ret;
+    int chroma_format_idc, sps_max_sub_layers_minus1;
+    int num_short_term_ref_pic_sets, num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT];
 
     ret = init_get_bits8(&gb, sps_buf, sps_size);
     if (ret < 0)
@@ -163,28 +255,79 @@ static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
 
     sps_max_sub_layers_minus1 = get_bits(&gb, 3);
 
-    skip_bits1(&gb); // sps_temporal_id_nesting_flag
+    hvcc->temporalIdNested = get_bits1(&gb);//fixme
 
     parse_ptl(&gb, &ptl, sps_max_sub_layers_minus1);
+    hvcc->general_profile_space = ptl.general_ptl.profile_space;
+    hvcc->general_tier_flag     = ptl.general_ptl.tier_flag;
+    hvcc->general_profile_idc   = ptl.general_ptl.profile_idc;
+    hvcc->general_level_idc     = ptl.general_ptl.level_idc;
+    //fixme: flags
 
     get_ue_golomb_long(&gb); // sps_seq_parameter_set_id
 
-    if (get_ue_golomb_long(&gb) == 3) // chroma_format_idc
+    chroma_format_idc  = get_ue_golomb_long(&gb);
+    hvcc->chromaFormat = chroma_format_idc & 0x3;
+
+    if (chroma_format_idc == 3)
         skip_bits1(&gb); // separate_colour_plane_flag
 
     get_ue_golomb_long(&gb); // pic_width_in_luma_samples
     get_ue_golomb_long(&gb); // pic_height_in_luma_samples
 
-    if (get_bits1(&gb)) { // conformance_window_flag
+    if (get_bits1(&gb)) {        // conformance_window_flag
         get_ue_golomb_long(&gb); // conf_win_left_offset
         get_ue_golomb_long(&gb); // conf_win_right_offset
         get_ue_golomb_long(&gb); // conf_win_top_offset
         get_ue_golomb_long(&gb); // conf_win_bottom_offset
     }
 
-    get_ue_golomb_long(&gb); // bit_depth_luma_minus8
-    get_ue_golomb_long(&gb); // bit_depth_chroma_minus8
+    hvcc->bitDepthLumaMinus8   = get_ue_golomb_long(&gb) & 0x7;
+    hvcc->bitDepthChromaMinus8 = get_ue_golomb_long(&gb) & 0x7;
+
     get_ue_golomb_long(&gb); // log2_max_pic_order_cnt_lsb_minus4
+
+    for (i = get_bits1(&gb) ? 0 : sps_max_sub_layers_minus1;
+         i <= sps_max_sub_layers_minus1; i++) {
+        get_ue_golomb_long(&gb); // sps_max_dec_pic_buffering_minus1[i]
+        get_ue_golomb_long(&gb); // sps_max_num_reorder_pics[i]
+        get_ue_golomb_long(&gb); // sps_max_latency_increase_plus1[i]
+    }
+
+    get_ue_golomb_long(&gb); // log2_min_luma_coding_block_size_minus3
+    get_ue_golomb_long(&gb); // log2_diff_max_min_luma_coding_block_size
+    get_ue_golomb_long(&gb); // log2_min_transform_block_size_minus2
+    get_ue_golomb_long(&gb); // log2_diff_max_min_transform_block_size
+    get_ue_golomb_long(&gb); // max_transform_hierarchy_depth_inter
+    get_ue_golomb_long(&gb); // max_transform_hierarchy_depth_intra
+
+    if (get_bits1(&gb) && // scaling_list_enabled_flag
+        get_bits1(&gb))   // sps_scaling_list_data_present_flag
+        skip_scaling_list_data(&gb);
+            
+
+    skip_bits1(&gb); // amp_enabled_flag
+    skip_bits1(&gb); // sample_adaptive_offset_enabled_flag
+
+    if (get_bits1(&gb)) {           // pcm_enabled_flag
+        skip_bits         (&gb, 4); // pcm_sample_bit_depth_luma_minus1
+        skip_bits         (&gb, 4); // pcm_sample_bit_depth_chroma_minus1
+        get_ue_golomb_long(&gb);    // log2_min_pcm_luma_coding_block_size_minus3
+        get_ue_golomb_long(&gb);    // log2_diff_max_min_pcm_luma_coding_block_size
+        skip_bits1        (&gb);    // pcm_loop_filter_disabled_flag
+    }
+
+    num_short_term_ref_pic_sets = get_ue_golomb_long(&gb);
+    if (num_short_term_ref_pic_sets > MAX_SHORT_TERM_RPS_COUNT)
+        return AVERROR_INVALIDDATA;
+
+    for (i = 0; i < num_short_term_ref_pic_sets; i++) {
+        ret = decode_rps(&gb, i, num_short_term_ref_pic_sets, num_delta_pocs);
+        if (ret < 0)
+            return ret;
+    }
+
+    //fixme: complete; get_ue_golomb_long not always necessary
 
     return 0;
 }
@@ -248,9 +391,10 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             if (!vps || vps_size > UINT16_MAX ||
                 !sps || sps_size > UINT16_MAX ||
                 !pps || pps_size > UINT16_MAX) {
-                av_log(NULL, AV_LOG_ERROR, "vps: %p size: %"PRIu32"\n", vps, vps_size);//fixme
-                av_log(NULL, AV_LOG_ERROR, "sps: %p size: %"PRIu32"\n", sps, sps_size);//fixme
-                av_log(NULL, AV_LOG_ERROR, "pps: %p size: %"PRIu32"\n", pps, pps_size);//fixme
+                //fixme: don't log this, just return
+                av_log(NULL, AV_LOG_ERROR, "vps: %p size: %"PRIu32"\n", vps, vps_size);
+                av_log(NULL, AV_LOG_ERROR, "sps: %p size: %"PRIu32"\n", sps, sps_size);
+                av_log(NULL, AV_LOG_ERROR, "pps: %p size: %"PRIu32"\n", pps, pps_size);
                 return AVERROR_INVALIDDATA;
             }
 
