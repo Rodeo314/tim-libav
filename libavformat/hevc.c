@@ -81,6 +81,7 @@ static void dump_profile_tier_level(const char *buf_name, uint8_t *buf, int inde
 }
 
 typedef struct HEVCDecoderConfigurationRecord {
+    uint8_t  configurationVersion;
     uint8_t  general_profile_space;
     uint8_t  general_tier_flag;
     uint8_t  general_profile_idc;
@@ -96,7 +97,28 @@ typedef struct HEVCDecoderConfigurationRecord {
     uint8_t  constantFrameRate;
     uint8_t  numTemporalLayers;
     uint8_t  temporalIdNested;
+    uint8_t  lengthSizeMinusOne;
 } HEVCDecoderConfigurationRecord;
+
+static const AVRational vui_sar[] = {
+    {  0,   1 },
+    {  1,   1 },
+    { 12,  11 },
+    { 10,  11 },
+    { 16,  11 },
+    { 40,  33 },
+    { 24,  11 },
+    { 20,  11 },
+    { 32,  11 },
+    { 80,  33 },
+    { 18,  11 },
+    { 15,  11 },
+    { 64,  33 },
+    { 160, 99 },
+    {  4,   3 },
+    {  3,   2 },
+    {  2,   1 },
+};
 
 static void parse_nal_header(GetBitContext *gb, uint8_t *nal_type)
 {
@@ -233,13 +255,160 @@ static int decode_rps(GetBitContext *gb, int rps_idx, int num_rps,
     return 0;
 }
 
+static void skip_sub_layer_hrd_parameters(GetBitContext *gb, int cpb_cnt_minus1,
+                                          int sub_pic_hrd_params_present_flag)
+{
+    int i;
+
+    for (i = 0; i <= cpb_cnt_minus1; i++) {
+        get_ue_golomb_long(gb); // bit_rate_value_minus1
+        get_ue_golomb_long(gb); // cpb_size_value_minus1
+
+        if (sub_pic_hrd_params_present_flag) {
+            get_ue_golomb_long(gb); // cpb_size_du_value_minus1
+            get_ue_golomb_long(gb); // bit_rate_du_value_minus1
+        }
+        skip_bits1(gb); // cbr_flag
+    }
+}
+
+static void skip_hrd_parameters(GetBitContext *gb, int max_sub_layers_minus1)
+{
+    int i;
+    uint8_t sub_pic_hrd_params_present_flag = 0;
+    uint8_t nal_hrd_parameters_present_flag = get_bits1(gb);
+    uint8_t vcl_hrd_parameters_present_flag = get_bits1(gb);
+
+    if (nal_hrd_parameters_present_flag || vcl_hrd_parameters_present_flag) {
+        sub_pic_hrd_params_present_flag = get_bits1(gb);
+        if (sub_pic_hrd_params_present_flag) {
+            skip_bits(gb, 8); // tick_divisor_minus2
+            skip_bits(gb, 5); // du_cpb_removal_delay_increment_length_minus1
+            skip_bits(gb, 1); // sub_pic_cpb_params_in_pic_timing_sei_flag
+            skip_bits(gb, 5); // dpb_output_delay_du_length_minus1
+        }
+
+        skip_bits(gb, 4); // bit_rate_scale
+        skip_bits(gb, 4); // cpb_size_scale
+
+        if (sub_pic_hrd_params_present_flag)
+            skip_bits(gb, 4);  // cpb_size_du_scale
+
+        skip_bits(gb, 5); // initial_cpb_removal_delay_length_minus1
+        skip_bits(gb, 5); // au_cpb_removal_delay_length_minus1
+        skip_bits(gb, 5); // dpb_output_delay_length_minus1
+    }
+
+    for (i = 0; i <= max_sub_layers_minus1; i++) {
+        int cpb_cnt_minus1                 = 0;
+        int low_delay_hrd_flag             = 0;
+        int fixed_pic_rate_within_cvs_flag = 0;
+        int fixed_pic_rate_general_flag    = get_bits1(gb);
+        
+        if (!fixed_pic_rate_general_flag)
+            fixed_pic_rate_within_cvs_flag = get_bits1(gb);
+        
+        if (fixed_pic_rate_within_cvs_flag)
+            get_ue_golomb_long(gb);  // elemental_duration_in_tc_minus1
+        else
+            low_delay_hrd_flag = get_bits1(gb);
+        
+        if (!low_delay_hrd_flag)
+            cpb_cnt_minus1 = get_ue_golomb_long(gb);
+        
+        if (nal_hrd_parameters_present_flag)
+            skip_sub_layer_hrd_parameters(gb, cpb_cnt_minus1,
+                                          sub_pic_hrd_params_present_flag);
+        if (vcl_hrd_parameters_present_flag)
+            skip_sub_layer_hrd_parameters(gb, cpb_cnt_minus1,
+                                          sub_pic_hrd_params_present_flag);
+    }
+}
+
+static void decode_vui(GetBitContext *gb, VUI *vui, int max_sub_layers_minus1)
+{
+    if (get_bits1(gb)) { // aspect_ratio_info_present_flag
+        uint8_t sar_idx = get_bits(gb, 8);
+        if (sar_idx < FF_ARRAY_ELEMS(vui_sar))
+            vui->sar = vui_sar[sar_idx];
+        else if (sar_idx == 255) {
+            vui->sar.num = get_bits(gb, 16);
+            vui->sar.den = get_bits(gb, 16);
+        }
+    }
+
+    vui->overscan_info_present_flag = get_bits1(gb);
+    if (vui->overscan_info_present_flag)
+        vui->overscan_appropriate_flag = get_bits1(gb);
+
+    vui->video_signal_type_present_flag = get_bits1(gb);
+    if (vui->video_signal_type_present_flag) {
+        vui->video_format          = get_bits (gb, 3);
+        vui->video_full_range_flag = get_bits1(gb);
+
+        vui->colour_description_present_flag = get_bits1(gb);
+        if (vui->colour_description_present_flag) {
+            vui->colour_primaries        = get_bits(gb, 8);
+            vui->transfer_characteristic = get_bits(gb, 8);
+            vui->matrix_coeffs           = get_bits(gb, 8);
+        }
+    }
+
+    vui->chroma_loc_info_present_flag = get_bits1(gb);
+    if (vui->chroma_loc_info_present_flag) {
+        vui->chroma_sample_loc_type_top_field    = get_ue_golomb_long(gb);
+        vui->chroma_sample_loc_type_bottom_field = get_ue_golomb_long(gb);
+    }
+
+    vui->neutra_chroma_indication_flag = get_bits1(gb);
+    vui->field_seq_flag                = get_bits1(gb);
+    vui->frame_field_info_present_flag = get_bits1(gb);
+
+    vui->default_display_window_flag = get_bits1(gb);
+    if (vui->default_display_window_flag) {
+        // TODO: * 2 is only valid for 4:2:0
+        vui->def_disp_win.left_offset   = get_ue_golomb_long(gb) * 2;
+        vui->def_disp_win.right_offset  = get_ue_golomb_long(gb) * 2;
+        vui->def_disp_win.top_offset    = get_ue_golomb_long(gb) * 2;
+        vui->def_disp_win.bottom_offset = get_ue_golomb_long(gb) * 2;
+    }
+
+    vui->vui_timing_info_present_flag = get_bits1(gb);
+    if (vui->vui_timing_info_present_flag) {
+        vui->vui_num_units_in_tick = get_bits_long(gb, 32);
+        vui->vui_time_scale        = get_bits_long(gb, 32);
+
+        vui->vui_poc_proportional_to_timing_flag = get_bits1(gb);
+        if (vui->vui_poc_proportional_to_timing_flag)
+            vui->vui_num_ticks_poc_diff_one_minus1 = get_ue_golomb_long(gb);
+
+        vui->vui_hrd_parameters_present_flag = get_bits1(gb);
+        if (vui->vui_hrd_parameters_present_flag)
+            skip_hrd_parameters(gb, max_sub_layers_minus1);
+    }
+
+    vui->bitstream_restriction_flag = get_bits1(gb);
+    if (vui->bitstream_restriction_flag) {
+        vui->tiles_fixed_structure_flag              = get_bits1(gb);
+        vui->motion_vectors_over_pic_boundaries_flag = get_bits1(gb);
+        vui->restricted_ref_pic_lists_flag           = get_bits1(gb);
+        vui->min_spatial_segmentation_idc            = get_ue_golomb_long(gb);
+        vui->max_bytes_per_pic_denom                 = get_ue_golomb_long(gb);
+        vui->max_bits_per_min_cu_denom               = get_ue_golomb_long(gb);
+        vui->log2_max_mv_length_horizontal           = get_ue_golomb_long(gb);
+        vui->log2_max_mv_length_vertical             = get_ue_golomb_long(gb);
+    }
+}
+
 static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
                             HEVCDecoderConfigurationRecord *hvcc)
 {
-    PTL ptl;
     uint8_t nal_type;
     GetBitContext gb;
+    PTL ptl = { { 0 } };
+    VUI vui = { { 0 } };
     int i, ret;
+    int log2_max_pic_order_cnt_lsb_minus4;
     int chroma_format_idc, sps_max_sub_layers_minus1;
     int num_short_term_ref_pic_sets, num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT];
 
@@ -253,16 +422,20 @@ static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
 
     skip_bits(&gb, 4); // sps_video_parameter_set_id
 
-    sps_max_sub_layers_minus1 = get_bits(&gb, 3);
-
-    hvcc->temporalIdNested = get_bits1(&gb);//fixme
+    sps_max_sub_layers_minus1 = get_bits (&gb, 3);
+    hvcc->temporalIdNested    = get_bits1(&gb);
 
     parse_ptl(&gb, &ptl, sps_max_sub_layers_minus1);
     hvcc->general_profile_space = ptl.general_ptl.profile_space;
     hvcc->general_tier_flag     = ptl.general_ptl.tier_flag;
     hvcc->general_profile_idc   = ptl.general_ptl.profile_idc;
     hvcc->general_level_idc     = ptl.general_ptl.level_idc;
-    //fixme: flags
+    for (i = 31; i >= 0; i++)
+        hvcc->general_profile_compatibility_flags |= (uint32_t)ptl.general_ptl.profile_compatibility_flag[i] << i;
+    hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.progressive_source_flag    << 47;
+    hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.interlaced_source_flag     << 46;
+    hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.non_packed_constraint_flag << 45;
+    hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.frame_only_constraint_flag << 44;
 
     get_ue_golomb_long(&gb); // sps_seq_parameter_set_id
 
@@ -285,7 +458,7 @@ static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
     hvcc->bitDepthLumaMinus8   = get_ue_golomb_long(&gb) & 0x7;
     hvcc->bitDepthChromaMinus8 = get_ue_golomb_long(&gb) & 0x7;
 
-    get_ue_golomb_long(&gb); // log2_max_pic_order_cnt_lsb_minus4
+    log2_max_pic_order_cnt_lsb_minus4 = get_ue_golomb_long(&gb);
 
     for (i = get_bits1(&gb) ? 0 : sps_max_sub_layers_minus1;
          i <= sps_max_sub_layers_minus1; i++) {
@@ -327,7 +500,27 @@ static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
             return ret;
     }
 
-    //fixme: complete; get_ue_golomb_long not always necessary
+    if (get_bits1(&gb)) {                               // long_term_ref_pics_present_flag
+        for (i = 0; i < get_ue_golomb_long(&gb); i++) { // num_long_term_ref_pics_sps
+            int len = log2_max_pic_order_cnt_lsb_minus4 + 4;
+            while (len > 0) { // lt_ref_pic_poc_lsb_sps[i]
+                skip_bits(&gb, FFMIN(25, len));
+                len -= 25;
+            }
+            skip_bits1(&gb); // used_by_curr_pic_lt_sps_flag[i]
+        }
+    }
+
+    skip_bits1(&gb); // sps_temporal_mvp_enabled_flag
+    skip_bits1(&gb); // strong_intra_smoothing_enabled_flag
+
+    hvcc->min_spatial_segmentation_idc = 0;
+    hvcc->parallelismType              = 0;
+    if (get_bits1(&gb)) { // vui_parameters_present_flag
+        decode_vui(&gb, &vui, sps_max_sub_layers_minus1);
+        if (vui.bitstream_restriction_flag)
+            hvcc->min_spatial_segmentation_idc = vui.min_spatial_segmentation_idc;
+    }
 
     return 0;
 }
@@ -338,7 +531,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
     if (len > 6) {
         /* check for H.265 start code */
         if (AV_RB32(data) == 0x00000001 || AV_RB24(data) == 0x000001) {
-            HEVCDecoderConfigurationRecord hvcc;
             uint32_t vps_size = 0, sps_size = 0, pps_size = 0;
             uint8_t *buf = NULL, *end, *start, *vps = NULL, *sps = NULL, *pps = NULL;
 
@@ -391,10 +583,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             if (!vps || vps_size > UINT16_MAX ||
                 !sps || sps_size > UINT16_MAX ||
                 !pps || pps_size > UINT16_MAX) {
-                //fixme: don't log this, just return
-                av_log(NULL, AV_LOG_ERROR, "vps: %p size: %"PRIu32"\n", vps, vps_size);
-                av_log(NULL, AV_LOG_ERROR, "sps: %p size: %"PRIu32"\n", sps, sps_size);
-                av_log(NULL, AV_LOG_ERROR, "pps: %p size: %"PRIu32"\n", pps, pps_size);
                 return AVERROR_INVALIDDATA;
             }
 
@@ -426,48 +614,35 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             dump_profile_tier_level("VPS", vps, 9, -1);
             dump_profile_tier_level("SPS", sps, 6, -1);
 
+
+            HEVCDecoderConfigurationRecord hvcc = { 0 };
+            hvcc.configurationVersion = 1;
+            hvcc.lengthSizeMinusOne   = 1; /* XXX: 2 bytes: FIXME!!! */
             ret = hevc_sps_to_hvcc(sps, sps_size, &hvcc);
             if (ret < 0)
                 return ret;
 
             /* HEVCDecoderConfigurationRecord */
-            avio_w8(pb,      1 ); /* configurationVersion */
-            avio_w8(pb, sps[ 6]); /* general_profile_space, general_tier_flag, general_profile_idc */
-            avio_w8(pb, sps[ 7]); /* general_profile_compatibility_flags 00..07 */
-            avio_w8(pb, sps[ 8]); /* general_profile_compatibility_flags 08..15 */
-            avio_w8(pb, sps[ 9]); /* general_profile_compatibility_flags 16..23 */
-            avio_w8(pb, sps[10]); /* general_profile_compatibility_flags 24..31 */
-            avio_w8(pb, sps[11]); /* general_constraint_indicator_flags  00..07 */
-            avio_w8(pb, sps[12]); /* general_constraint_indicator_flags  08..15 */
-            avio_w8(pb, sps[13]); /* general_constraint_indicator_flags  16..23 */
-            avio_w8(pb, sps[14]); /* general_constraint_indicator_flags  24..31 */
-            avio_w8(pb, sps[15]); /* general_constraint_indicator_flags  32..39 */
-            avio_w8(pb, sps[16]); /* general_constraint_indicator_flags  40..47 */
-            avio_w8(pb, sps[17]); /* general_level_idc */
+            avio_w8  (pb, hvcc.configurationVersion);
+            avio_w8  (pb, hvcc.general_profile_space << 6 |
+                          hvcc.general_tier_flag     << 5 |
+                          hvcc.general_profile_idc);
+            avio_wb32(pb, hvcc.general_profile_compatibility_flags);
+            avio_wb32(pb, hvcc.general_constraint_indicator_flags >> 16);
+            avio_wb16(pb, hvcc.general_constraint_indicator_flags);
+            avio_w8  (pb, hvcc.general_level_idc);
+            avio_wb16(pb, hvcc.min_spatial_segmentation_idc | 0xf000);
+            avio_w8  (pb, hvcc.parallelismType              | 0xfc);
+            avio_w8  (pb, hvcc.chromaFormat                 | 0xfc);
+            avio_w8  (pb, hvcc.bitDepthLumaMinus8           | 0xf8);
+            avio_w8  (pb, hvcc.bitDepthChromaMinus8         | 0xf8);
+            avio_wb16(pb, hvcc.avgFrameRate);
+            avio_w8  (pb, hvcc.constantFrameRate << 6 |
+                          hvcc.numTemporalLayers << 3 |
+                          hvcc.temporalIdNested  << 2 |
+                          hvcc.lengthSizeMinusOne);
             /*
              * HEVCDecoderConfigurationRecord: continued
-             *
-             *          bit(4)  reserved = ‘1111’b;
-             * unsigned int(12) min_spatial_segmentation_idc;
-             *
-             *          bit(6)  reserved = ‘111111’b;
-             * unsigned int(2)  parallelismType;
-             *
-             *          bit(6)  reserved = ‘111111’b;
-             * unsigned int(2)  chromaFormat;
-             *
-             *          bit(5)  reserved = ‘11111’b;
-             * unsigned int(3)  bitDepthLumaMinus8;
-             *
-             *          bit(5)  reserved = ‘11111’b;
-             * unsigned int(3)  bitDepthChromaMinus8;
-             *
-             *          bit(16) avgFrameRate;
-             *
-             * bit(2)           constantFrameRate;
-             * bit(3)           numTemporalLayers;
-             * bit(1)           temporalIdNested;
-             * unsigned int(2)  lengthSizeMinusOne;
              *
              * unsigned int(8)  numOfArrays;
              *
