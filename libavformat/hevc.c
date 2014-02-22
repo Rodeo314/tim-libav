@@ -420,6 +420,8 @@ static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
     if (nal_type != NAL_SPS)
         return AVERROR_INVALIDDATA;
 
+    // FIXME: clearly there's something here (extract_rbsp)?
+
     skip_bits(&gb, 4); // sps_video_parameter_set_id
 
     sps_max_sub_layers_minus1 = get_bits (&gb, 3);
@@ -430,8 +432,8 @@ static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
     hvcc->general_tier_flag     = ptl.general_ptl.tier_flag;
     hvcc->general_profile_idc   = ptl.general_ptl.profile_idc;
     hvcc->general_level_idc     = ptl.general_ptl.level_idc;
-    for (i = 31; i >= 0; i++)
-        hvcc->general_profile_compatibility_flags |= (uint32_t)ptl.general_ptl.profile_compatibility_flag[i] << i;
+    for (i = 0; i < 31; i++)
+        hvcc->general_profile_compatibility_flags |= (uint32_t)ptl.general_ptl.profile_compatibility_flag[i] << (31 - i);
     hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.progressive_source_flag    << 47;
     hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.interlaced_source_flag     << 46;
     hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.non_packed_constraint_flag << 45;
