@@ -144,8 +144,8 @@ static void skip_scaling_list_data(GetBitContext *gb)
             }
 }
 
-static int decode_rps(GetBitContext *gb, int rps_idx, int num_rps,
-                      int num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT])
+static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
+                     int num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT])
 {
     int i;
 
@@ -430,7 +430,7 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
         return AVERROR_INVALIDDATA;
 
     for (i = 0; i < num_short_term_ref_pic_sets; i++) {
-        ret = decode_rps(&gb, i, num_short_term_ref_pic_sets, num_delta_pocs);
+        ret = parse_rps(&gb, i, num_short_term_ref_pic_sets, num_delta_pocs);
         if (ret < 0)
             return ret;
     }
