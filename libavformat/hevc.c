@@ -196,6 +196,8 @@ static void hvcc_parse_vui(GetBitContext *gb,
                            HEVCDecoderConfigurationRecord *hvcc,
                            int max_sub_layers_minus1)
 {
+    int min_spatial_segmentation_idc;
+
     if (get_bits1(gb))              // aspect_ratio_info_present_flag
         if (get_bits(gb, 8) == 255) // aspect_ratio_idc
             skip_bits_long(gb, 32); // sar_width u(16), sar_height u(16)
@@ -242,13 +244,18 @@ static void hvcc_parse_vui(GetBitContext *gb,
             skip_hrd_parameters(gb, 1, max_sub_layers_minus1);
     }
 
-    //fixme: hvcc
     if (get_bits1(gb)) { // bitstream_restriction_flag
         // tiles_fixed_structure_flag              u(1)
         // motion_vectors_over_pic_boundaries_flag u(1)
         // restricted_ref_pic_lists_flag           u(1)
         skip_bits(gb, 3);
-        get_ue_golomb(gb); // min_spatial_segmentation_idc
+
+        // in  an hvCC, min_spatial_segmentation_idc is u(12)
+        min_spatial_segmentation_idc = get_ue_golomb(gb);
+        if (min_spatial_segmentation_idc > 0 &&
+            min_spatial_segmentation_idc < 4096)
+            hvcc->min_spatial_segmentation_idc = min_spatial_segmentation_idc;
+
         get_ue_golomb(gb); // max_bytes_per_pic_denom
         get_ue_golomb(gb); // max_bits_per_min_cu_denom
         get_ue_golomb(gb); // log2_max_mv_length_horizontal
