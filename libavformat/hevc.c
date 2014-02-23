@@ -117,12 +117,12 @@ static void skip_sub_layer_hrd_parameters(GetBitContext *gb, int cpb_cnt_minus1,
     int i;
 
     for (i = 0; i <= cpb_cnt_minus1; i++) {
-        get_ue_golomb_long(gb); // bit_rate_value_minus1
-        get_ue_golomb_long(gb); // cpb_size_value_minus1
+        get_ue_golomb(gb); // bit_rate_value_minus1
+        get_ue_golomb(gb); // cpb_size_value_minus1
 
         if (sub_pic_hrd_params_present_flag) {
-            get_ue_golomb_long(gb); // cpb_size_du_value_minus1
-            get_ue_golomb_long(gb); // bit_rate_du_value_minus1
+            get_ue_golomb(gb); // cpb_size_du_value_minus1
+            get_ue_golomb(gb); // bit_rate_du_value_minus1
         }
         skip_bits1(gb); // cbr_flag
     }
@@ -175,12 +175,12 @@ static void skip_hrd_parameters(GetBitContext *gb, int common_inf_present_flag,
             fixed_pic_rate_within_cvs_flag = get_bits1(gb);
 
         if (fixed_pic_rate_within_cvs_flag)
-            get_ue_golomb_long(gb); // elemental_duration_in_tc_minus1
+            get_ue_golomb(gb); // elemental_duration_in_tc_minus1
         else
             low_delay_hrd_flag = get_bits1(gb);
 
         if (!low_delay_hrd_flag)
-            cpb_cnt_minus1 = get_ue_golomb_long(gb);
+            cpb_cnt_minus1 = get_ue_golomb(gb);
 
         if (nal_hrd_parameters_present_flag)
             skip_sub_layer_hrd_parameters(gb, cpb_cnt_minus1,
@@ -213,9 +213,9 @@ static void hvcc_parse_vui(GetBitContext *gb,
             skip_bits(gb, 24);
     }
 
-    if (get_bits1(gb)) {        // chroma_loc_info_present_flag
-        get_ue_golomb_long(gb); // chroma_sample_loc_type_top_field
-        get_ue_golomb_long(gb); // chroma_sample_loc_type_bottom_field
+    if (get_bits1(gb)) {   // chroma_loc_info_present_flag
+        get_ue_golomb(gb); // chroma_sample_loc_type_top_field
+        get_ue_golomb(gb); // chroma_sample_loc_type_bottom_field
     }
 
     // neutral_chroma_indication_flag u(1)
@@ -223,11 +223,11 @@ static void hvcc_parse_vui(GetBitContext *gb,
     // frame_field_info_present_flag  u(1)
     skip_bits(gb, 3);
 
-    if (get_bits1(gb)) {        // default_display_window_flag
-        get_ue_golomb_long(gb); // def_disp_win_left_offset
-        get_ue_golomb_long(gb); // def_disp_win_right_offset
-        get_ue_golomb_long(gb); // def_disp_win_top_offset
-        get_ue_golomb_long(gb); // def_disp_win_bottom_offset
+    if (get_bits1(gb)) {   // default_display_window_flag
+        get_ue_golomb(gb); // def_disp_win_left_offset
+        get_ue_golomb(gb); // def_disp_win_right_offset
+        get_ue_golomb(gb); // def_disp_win_top_offset
+        get_ue_golomb(gb); // def_disp_win_bottom_offset
     }
 
     //fixme: hvcc
@@ -235,8 +235,8 @@ static void hvcc_parse_vui(GetBitContext *gb,
         skip_bits_long(gb, 32); // vui_num_units_in_tick
         skip_bits_long(gb, 32); // vui_time_scale
 
-        if (get_bits1(gb))          // vui_poc_proportional_to_timing_flag
-            get_ue_golomb_long(gb); // vui_num_ticks_poc_diff_one_minus1
+        if (get_bits1(gb))     // vui_poc_proportional_to_timing_flag
+            get_ue_golomb(gb); // vui_num_ticks_poc_diff_one_minus1
 
         if (get_bits1(gb)) // vui_hrd_parameters_present_flag
             skip_hrd_parameters(gb, 1, max_sub_layers_minus1);
@@ -248,11 +248,11 @@ static void hvcc_parse_vui(GetBitContext *gb,
         // motion_vectors_over_pic_boundaries_flag u(1)
         // restricted_ref_pic_lists_flag           u(1)
         skip_bits(gb, 3);
-        get_ue_golomb_long(gb); // min_spatial_segmentation_idc
-        get_ue_golomb_long(gb); // max_bytes_per_pic_denom
-        get_ue_golomb_long(gb); // max_bits_per_min_cu_denom
-        get_ue_golomb_long(gb); // log2_max_mv_length_horizontal
-        get_ue_golomb_long(gb); // log2_max_mv_length_vertical
+        get_ue_golomb(gb); // min_spatial_segmentation_idc
+        get_ue_golomb(gb); // max_bytes_per_pic_denom
+        get_ue_golomb(gb); // max_bits_per_min_cu_denom
+        get_ue_golomb(gb); // log2_max_mv_length_horizontal
+        get_ue_golomb(gb); // log2_max_mv_length_vertical
     }
 }
 
@@ -291,13 +291,13 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
     //fixme: same code in SPS parsing function, de-duplicate
     for (i = get_bits1(gb) ? 0 : vps_max_sub_layers_minus1;
          i <= vps_max_sub_layers_minus1; i++) {
-        get_ue_golomb_long(gb); // vps_max_dec_pic_buffering_minus1[i]
-        get_ue_golomb_long(gb); // vps_max_num_reorder_pics[i]
-        get_ue_golomb_long(gb); // vps_max_latency_increase_plus1[i]
+        get_ue_golomb(gb); // vps_max_dec_pic_buffering_minus1[i]
+        get_ue_golomb(gb); // vps_max_num_reorder_pics[i]
+        get_ue_golomb(gb); // vps_max_latency_increase_plus1[i]
     }
 
-    vps_max_layer_id          = get_bits          (gb, 6);
-    vps_num_layer_sets_minus1 = get_ue_golomb_long(gb);
+    vps_max_layer_id          = get_bits     (gb, 6);
+    vps_num_layer_sets_minus1 = get_ue_golomb(gb);
 
     for (i = 1; i <= vps_num_layer_sets_minus1; i++)
         for (j = 0; j <= vps_max_layer_id; j++)
@@ -308,16 +308,16 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
         skip_bits_long(gb, 32); // vps_num_units_in_tick
         skip_bits_long(gb, 32); // vps_time_scale
 
-        if (get_bits1(gb))          // vps_poc_proportional_to_timing_flag
-            get_ue_golomb_long(gb); // vps_num_ticks_poc_diff_one_minus1
+        if (get_bits1(gb))     // vps_poc_proportional_to_timing_flag
+            get_ue_golomb(gb); // vps_num_ticks_poc_diff_one_minus1
 
         //fixme: do we need this at all?
-        vps_num_hrd_parameters = get_ue_golomb_long(gb);
+        vps_num_hrd_parameters = get_ue_golomb(gb);
 
         for (i = 0; i < vps_num_hrd_parameters; i++) {
             uint8_t cprms_present_flag = 0;
 
-            get_ue_golomb_long(gb); // hrd_layer_set_idx[i]
+            get_ue_golomb(gb); // hrd_layer_set_idx[i]
 
             if (i > 0)
                 cprms_present_flag = get_bits1(gb);
@@ -337,8 +337,8 @@ static void skip_scaling_list_data(GetBitContext *gb)
 
     for (i = 0; i < 4; i++)
         for (j = 0; j < (i == 3 ? 2 : 6); j++)
-            if (!get_bits1(gb))         // scaling_list_pred_mode_flag[i][j]
-                get_ue_golomb_long(gb); // scaling_list_pred_matrix_id_delta[i][j]
+            if (!get_bits1(gb))    // scaling_list_pred_mode_flag[i][j]
+                get_ue_golomb(gb); // scaling_list_pred_matrix_id_delta[i][j]
             else {
                 num_coeffs = FFMIN(64, 1 << (4 + (i << 1)));
 
@@ -360,8 +360,8 @@ static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
         if (rps_idx >= num_rps)
             return AVERROR_INVALIDDATA;
 
-        skip_bits1        (gb); // delta_rps_sign
-        get_ue_golomb_long(gb); // abs_delta_rps_minus1
+        skip_bits1   (gb); // delta_rps_sign
+        get_ue_golomb(gb); // abs_delta_rps_minus1
 
         num_delta_pocs[rps_idx] = 0;
 
@@ -394,19 +394,19 @@ static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
                 num_delta_pocs[rps_idx]++;
         }
     } else {
-        unsigned int num_negative_pics = get_ue_golomb_long(gb);
-        unsigned int num_positive_pics = get_ue_golomb_long(gb);
+        int num_negative_pics = get_ue_golomb(gb);
+        int num_positive_pics = get_ue_golomb(gb);
 
         num_delta_pocs[rps_idx] = num_negative_pics + num_positive_pics;
 
         for (i = 0; i < num_negative_pics; i++) {
-            get_ue_golomb_long(gb); // delta_poc_s0_minus1[rps_idx]
-            skip_bits1        (gb); // used_by_curr_pic_s0_flag[rps_idx]
+            get_ue_golomb(gb); // delta_poc_s0_minus1[rps_idx]
+            skip_bits1   (gb); // used_by_curr_pic_s0_flag[rps_idx]
         }
 
         for (i = 0; i < num_positive_pics; i++) {
-            get_ue_golomb_long(gb); // delta_poc_s1_minus1[rps_idx]
-            skip_bits1        (gb); // used_by_curr_pic_s1_flag[rps_idx]
+            get_ue_golomb(gb); // delta_poc_s1_minus1[rps_idx]
+            skip_bits1   (gb); // used_by_curr_pic_s1_flag[rps_idx]
         }
     }
 
@@ -441,42 +441,41 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 
     hvcc_parse_ptl(gb, hvcc, sps_max_sub_layers_minus1);
 
-    get_ue_golomb_long(gb); // sps_seq_parameter_set_id
+    get_ue_golomb(gb); // sps_seq_parameter_set_id
 
-    chroma_format_idc  = get_ue_golomb_long(gb);
+    chroma_format_idc  = get_ue_golomb(gb);
     hvcc->chromaFormat = chroma_format_idc & 0x3;
 
     if (chroma_format_idc == 3)
         skip_bits1(gb); // separate_colour_plane_flag
 
-    get_ue_golomb_long(gb); // pic_width_in_luma_samples
-    get_ue_golomb_long(gb); // pic_height_in_luma_samples
+    get_ue_golomb(gb); // pic_width_in_luma_samples
+    get_ue_golomb(gb); // pic_height_in_luma_samples
 
-    if (get_bits1(gb)) {        // conformance_window_flag
-        get_ue_golomb_long(gb); // conf_win_left_offset
-        get_ue_golomb_long(gb); // conf_win_right_offset
-        get_ue_golomb_long(gb); // conf_win_top_offset
-        get_ue_golomb_long(gb); // conf_win_bottom_offset
+    if (get_bits1(gb)) {   // conformance_window_flag
+        get_ue_golomb(gb); // conf_win_left_offset
+        get_ue_golomb(gb); // conf_win_right_offset
+        get_ue_golomb(gb); // conf_win_top_offset
+        get_ue_golomb(gb); // conf_win_bottom_offset
     }
 
-    hvcc->bitDepthLumaMinus8   = get_ue_golomb_long(gb) & 0x7;
-    hvcc->bitDepthChromaMinus8 = get_ue_golomb_long(gb) & 0x7;
-
-    log2_max_pic_order_cnt_lsb_minus4 = get_ue_golomb_long(gb);
+    hvcc->bitDepthLumaMinus8          = get_ue_golomb(gb) & 0x7;
+    hvcc->bitDepthChromaMinus8        = get_ue_golomb(gb) & 0x7;
+    log2_max_pic_order_cnt_lsb_minus4 = get_ue_golomb(gb);
 
     for (i = get_bits1(gb) ? 0 : sps_max_sub_layers_minus1;
          i <= sps_max_sub_layers_minus1; i++) {
-        get_ue_golomb_long(gb); // sps_max_dec_pic_buffering_minus1[i]
-        get_ue_golomb_long(gb); // sps_max_num_reorder_pics[i]
-        get_ue_golomb_long(gb); // sps_max_latency_increase_plus1[i]
+        get_ue_golomb(gb); // sps_max_dec_pic_buffering_minus1[i]
+        get_ue_golomb(gb); // sps_max_num_reorder_pics[i]
+        get_ue_golomb(gb); // sps_max_latency_increase_plus1[i]
     }
 
-    get_ue_golomb_long(gb); // log2_min_luma_coding_block_size_minus3
-    get_ue_golomb_long(gb); // log2_diff_max_min_luma_coding_block_size
-    get_ue_golomb_long(gb); // log2_min_transform_block_size_minus2
-    get_ue_golomb_long(gb); // log2_diff_max_min_transform_block_size
-    get_ue_golomb_long(gb); // max_transform_hierarchy_depth_inter
-    get_ue_golomb_long(gb); // max_transform_hierarchy_depth_intra
+    get_ue_golomb(gb); // log2_min_luma_coding_block_size_minus3
+    get_ue_golomb(gb); // log2_diff_max_min_luma_coding_block_size
+    get_ue_golomb(gb); // log2_min_transform_block_size_minus2
+    get_ue_golomb(gb); // log2_diff_max_min_transform_block_size
+    get_ue_golomb(gb); // max_transform_hierarchy_depth_inter
+    get_ue_golomb(gb); // max_transform_hierarchy_depth_intra
 
     if (get_bits1(gb) && // scaling_list_enabled_flag
         get_bits1(gb))   // sps_scaling_list_data_present_flag
@@ -485,15 +484,15 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     skip_bits1(gb); // amp_enabled_flag
     skip_bits1(gb); // sample_adaptive_offset_enabled_flag
 
-    if (get_bits1(gb)) {           // pcm_enabled_flag
-        skip_bits         (gb, 4); // pcm_sample_bit_depth_luma_minus1
-        skip_bits         (gb, 4); // pcm_sample_bit_depth_chroma_minus1
-        get_ue_golomb_long(gb);    // log2_min_pcm_luma_coding_block_size_minus3
-        get_ue_golomb_long(gb);    // log2_diff_max_min_pcm_luma_coding_block_size
-        skip_bits1        (gb);    // pcm_loop_filter_disabled_flag
+    if (get_bits1(gb)) {      // pcm_enabled_flag
+        skip_bits    (gb, 4); // pcm_sample_bit_depth_luma_minus1
+        skip_bits    (gb, 4); // pcm_sample_bit_depth_chroma_minus1
+        get_ue_golomb(gb);    // log2_min_pcm_luma_coding_block_size_minus3
+        get_ue_golomb(gb);    // log2_diff_max_min_pcm_luma_coding_block_size
+        skip_bits1   (gb);    // pcm_loop_filter_disabled_flag
     }
 
-    num_short_term_ref_pic_sets = get_ue_golomb_long(gb);
+    num_short_term_ref_pic_sets = get_ue_golomb(gb);
     if (num_short_term_ref_pic_sets > MAX_SHORT_TERM_RPS_COUNT)
         return AVERROR_INVALIDDATA;
 
@@ -503,8 +502,8 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
             return ret;
     }
 
-    if (get_bits1(gb)) {                               // long_term_ref_pics_present_flag
-        for (i = 0; i < get_ue_golomb_long(gb); i++) { // num_long_term_ref_pics_sps
+    if (get_bits1(gb)) {                          // long_term_ref_pics_present_flag
+        for (i = 0; i < get_ue_golomb(gb); i++) { // num_long_term_ref_pics_sps
             int len = FFMIN(log2_max_pic_order_cnt_lsb_minus4 + 4, 16);
             skip_bits (gb, len); // lt_ref_pic_poc_lsb_sps[i]
             skip_bits1(gb);      // used_by_curr_pic_lt_sps_flag[i]
@@ -538,8 +537,8 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
 
     // FIXME: clearly there's something here (extract_rbsp)?
 
-    get_ue_golomb_long(gb); // pps_pic_parameter_set_id
-    get_ue_golomb_long(gb); // pps_seq_parameter_set_id
+    get_ue_golomb(gb); // pps_pic_parameter_set_id
+    get_ue_golomb(gb); // pps_seq_parameter_set_id
 
     // dependent_slice_segments_enabled_flag u(1)
     // output_flag_present_flag              u(1)
@@ -548,8 +547,8 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
     // cabac_init_present_flag               u(1)
     skip_bits(gb, 7);
 
-    get_ue_golomb_long(gb); // num_ref_idx_l0_default_active_minus1
-    get_ue_golomb_long(gb); // num_ref_idx_l1_default_active_minus1
+    get_ue_golomb(gb); // num_ref_idx_l0_default_active_minus1
+    get_ue_golomb(gb); // num_ref_idx_l1_default_active_minus1
 
     get_se_golomb(gb); // init_qp_minus26
 
@@ -557,8 +556,8 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
     // transform_skip_enabled_flag u(1)
     skip_bits(gb, 2);
 
-    if (get_bits1(gb))          // cu_qp_delta_enabled_flag
-        get_ue_golomb_long(gb); // diff_cu_qp_delta_depth
+    if (get_bits1(gb))     // cu_qp_delta_enabled_flag
+        get_ue_golomb(gb); // diff_cu_qp_delta_depth
 
     get_se_golomb(gb); // pps_cb_qp_offset
     get_se_golomb(gb); // pps_cr_qp_offset
@@ -574,14 +573,14 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
     skip_bits1(gb); // entropy_coding_sync_enabled_flag
 
     if (tiles_enabled_flag) {
-        int num_tile_columns_minus1 = get_ue_golomb_long(gb);
-        int num_tile_rows_minus1    = get_ue_golomb_long(gb);
+        int num_tile_columns_minus1 = get_ue_golomb(gb);
+        int num_tile_rows_minus1    = get_ue_golomb(gb);
         if (!get_bits1(gb)) { // uniform_spacing_flag
             for (i = 0; i < num_tile_columns_minus1; i++)
-                get_ue_golomb_long(gb); // column_width_minus1[i]
+                get_ue_golomb(gb); // column_width_minus1[i]
 
             for (i = 0; i < num_tile_rows_minus1; i++)
-                get_ue_golomb_long(gb); // row_height_minus1[i]
+                get_ue_golomb(gb); // row_height_minus1[i]
 
             skip_bits1(gb); // loop_filter_across_tiles_enabled_flag
         }
@@ -603,7 +602,7 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
 
     skip_bits1(gb); // lists_modification_present_flag
 
-    get_ue_golomb_long(gb); // log2_parallel_merge_level_minus2
+    get_ue_golomb(gb); // log2_parallel_merge_level_minus2
 
     skip_bits1(gb); // slice_segment_header_extension_present_flag
 
