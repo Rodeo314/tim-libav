@@ -83,20 +83,16 @@ static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
      * capability equal to or greater than the highest level indicated for the
      * highest tier in all the parameter sets.
      */
-    if (ptl->tier_flag == hvcc->general_tier_flag &&
-        hvcc->general_level_idc < ptl->level_idc)
+    if (hvcc->general_tier_flag < ptl->tier_flag)
         hvcc->general_level_idc = ptl->level_idc;
+    else
+        hvcc->general_level_idc = FFMAX(hvcc->general_level_idc, ptl->level_idc);
 
     /*
      * The tier indication general_tier_flag must indicate a tier equal to or
      * greater than the highest tier indicated in all the parameter sets.
-     *
-     * Note: see above regarding the value of level_idc.
      */
-    if (hvcc->general_tier_flag < ptl->tier_flag) {
-        hvcc->general_tier_flag = ptl->tier_flag;
-        hvcc->general_level_idc = ptl->level_idc;
-    }
+    hvcc->general_tier_flag = FFMAX(hvcc->general_tier_flag, ptl->tier_flag);
 
     /*
      * The profile indication general_profile_idc must indicate a profile to
@@ -112,8 +108,8 @@ static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
      *
      * Note: set the profile to the highest value for the sake of simplicity.
      */
-    if (hvcc->general_profile_idc < ptl->profile_idc)
-        hvcc->general_profile_idc = ptl->profile_idc;
+    hvcc->general_profile_idc = FFMAX(hvcc->general_profile_idc, ptl->profile_idc);
+        
 
     /*
      * Each bit in general_profile_compatibility_flags may only be set if all
@@ -323,8 +319,8 @@ static void hvcc_parse_vui(GetBitContext *gb,
          * spatial segmentation equal to or less than the lowest level of
          * spatial segmentation indicated in all the parameter sets.
          */
-        if (hvcc->min_spatial_segmentation_idc > min_spatial_segmentation_idc)
-            hvcc->min_spatial_segmentation_idc = min_spatial_segmentation_idc;
+        hvcc->min_spatial_segmentation_idc = FFMIN(hvcc->min_spatial_segmentation_idc,
+                                                   min_spatial_segmentation_idc);
 
         get_ue_golomb(gb); // max_bytes_per_pic_denom
         get_ue_golomb(gb); // max_bits_per_min_cu_denom
@@ -365,6 +361,17 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
 
     vps_max_layers_minus1     = get_bits(gb, 6);
     vps_max_sub_layers_minus1 = get_bits(gb, 3);
+
+    /*
+     * numTemporalLayers greater than 1 indicates that the stream to which this
+     * configuration record applies is temporally scalable and the contained
+     * number of temporal layers (also referred to as temporal sub-layer or
+     * sub-layer in ISO/IEC 23008-2) is equal to numTemporalLayers. Value 1
+     * indicates that the stream is not temporally scalable. Value 0 indicates
+     * that it is unknown whether the stream is temporally scalable.
+     */
+    hvcc->numTemporalLayers = FFMAX(hvcc->numTemporalLayers,
+                                    vps_max_sub_layers_minus1 + 1);
 
     skip_bits1(gb); // vps_temporal_id_nesting_flag
 
@@ -517,6 +524,17 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     skip_bits(gb, 4); // sps_video_parameter_set_id
 
     sps_max_sub_layers_minus1 = get_bits (gb, 3);
+
+    /*
+     * numTemporalLayers greater than 1 indicates that the stream to which this
+     * configuration record applies is temporally scalable and the contained
+     * number of temporal layers (also referred to as temporal sub-layer or
+     * sub-layer in ISO/IEC 23008-2) is equal to numTemporalLayers. Value 1
+     * indicates that the stream is not temporally scalable. Value 0 indicates
+     * that it is unknown whether the stream is temporally scalable.
+     */
+    hvcc->numTemporalLayers = FFMAX(hvcc->numTemporalLayers,
+                                    sps_max_sub_layers_minus1 + 1);
 
     hvcc->temporalIdNested = get_bits1(gb);
 
