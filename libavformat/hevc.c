@@ -127,86 +127,6 @@ static void hvcc_parse_ptl(GetBitContext *gb,
     }
 }
 
-static void skip_scaling_list_data(GetBitContext *gb)
-{
-    int i, j, k, num_coeffs;
-
-    for (i = 0; i < 4; i++)
-        for (j = 0; j < (i == 3 ? 2 : 6); j++)
-            if (!get_bits1(gb))         // scaling_list_pred_mode_flag[i][j]
-                get_ue_golomb_long(gb); // scaling_list_pred_matrix_id_delta[i][j]
-            else {
-                num_coeffs = FFMIN(64, 1 << (4 + (i << 1)));
-                if (i > 1)
-                    get_se_golomb(gb); // scaling_list_dc_coef_minus8[i-2][j]
-                for (k = 0; k < num_coeffs; k++)
-                    get_se_golomb(gb); // scaling_list_delta_coef
-            }
-}
-
-static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
-                     int num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT])
-{
-    int i;
-
-    if (rps_idx && get_bits1(gb)) { // inter_ref_pic_set_prediction_flag
-        // this should only happen for slice headers, and this isn't one
-        if (rps_idx >= num_rps)
-            return AVERROR_INVALIDDATA;
-
-        skip_bits1        (gb); // delta_rps_sign
-        get_ue_golomb_long(gb); // abs_delta_rps_minus1
-
-        num_delta_pocs[rps_idx] = 0;
-
-        /*
-         * From libavcodec/hevc_ps.c:
-         *
-         * if (is_slice_header) {
-         *    //foo
-         * } else
-         *     rps_ridx = &sps->st_rps[rps - sps->st_rps - 1];
-         *
-         * where:
-         * rps:             &sps->st_rps[rps_idx]
-         * sps->st_rps:     &sps->st_rps[0]
-         * is_slice_header: rps_idx == num_rps
-         *
-         * thus:
-         * if (num_rps != rps_idx)
-         *     rps_ridx = &sps->st_rps[rps_idx - 1];
-         *
-         * NumDeltaPocs[RefRpsIdx]: num_delta_pocs[rps_idx - 1]
-         */
-        for (i = 0; i < num_delta_pocs[rps_idx - 1]; i++) {
-            uint8_t use_delta_flag = 0;
-            uint8_t used_by_curr_pic_flag = get_bits1(gb);
-            if (!used_by_curr_pic_flag)
-                use_delta_flag = get_bits1(gb);
-
-            if (used_by_curr_pic_flag || use_delta_flag)
-                num_delta_pocs[rps_idx]++;
-        }
-    } else {
-        unsigned int num_negative_pics = get_ue_golomb_long(gb);
-        unsigned int num_positive_pics = get_ue_golomb_long(gb);
-
-        num_delta_pocs[rps_idx] = num_negative_pics + num_positive_pics;
-
-        for (i = 0; i < num_negative_pics; i++) {
-            get_ue_golomb_long(gb); // delta_poc_s0_minus1[rps_idx]
-            skip_bits1        (gb); // used_by_curr_pic_s0_flag[rps_idx]
-        }
-
-        for (i = 0; i < num_positive_pics; i++) {
-            get_ue_golomb_long(gb); // delta_poc_s1_minus1[rps_idx]
-            skip_bits1        (gb); // used_by_curr_pic_s1_flag[rps_idx]
-        }
-    }
-
-    return 0;
-}
-
 static void skip_sub_layer_hrd_parameters(GetBitContext *gb, int cpb_cnt_minus1,
                                           int sub_pic_hrd_params_present_flag)
 {
@@ -343,6 +263,88 @@ static void hvcc_parse_vui(GetBitContext *gb,
         get_ue_golomb_long(gb); // log2_max_mv_length_horizontal
         get_ue_golomb_long(gb); // log2_max_mv_length_vertical
     }
+}
+
+static void skip_scaling_list_data(GetBitContext *gb)
+{
+    int i, j, k, num_coeffs;
+
+    for (i = 0; i < 4; i++)
+        for (j = 0; j < (i == 3 ? 2 : 6); j++)
+            if (!get_bits1(gb))         // scaling_list_pred_mode_flag[i][j]
+                get_ue_golomb_long(gb); // scaling_list_pred_matrix_id_delta[i][j]
+            else {
+                num_coeffs = FFMIN(64, 1 << (4 + (i << 1)));
+
+                if (i > 1)
+                    get_se_golomb(gb); // scaling_list_dc_coef_minus8[i-2][j]
+
+                for (k = 0; k < num_coeffs; k++)
+                    get_se_golomb(gb); // scaling_list_delta_coef
+            }
+}
+
+static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
+                     int num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT])
+{
+    int i;
+
+    if (rps_idx && get_bits1(gb)) { // inter_ref_pic_set_prediction_flag
+        // this should only happen for slice headers, and this isn't one
+        if (rps_idx >= num_rps)
+            return AVERROR_INVALIDDATA;
+
+        skip_bits1        (gb); // delta_rps_sign
+        get_ue_golomb_long(gb); // abs_delta_rps_minus1
+
+        num_delta_pocs[rps_idx] = 0;
+
+        /*
+         * From libavcodec/hevc_ps.c:
+         *
+         * if (is_slice_header) {
+         *    //foo
+         * } else
+         *     rps_ridx = &sps->st_rps[rps - sps->st_rps - 1];
+         *
+         * where:
+         * rps:             &sps->st_rps[rps_idx]
+         * sps->st_rps:     &sps->st_rps[0]
+         * is_slice_header: rps_idx == num_rps
+         *
+         * thus:
+         * if (num_rps != rps_idx)
+         *     rps_ridx = &sps->st_rps[rps_idx - 1];
+         *
+         * NumDeltaPocs[RefRpsIdx]: num_delta_pocs[rps_idx - 1]
+         */
+        for (i = 0; i < num_delta_pocs[rps_idx - 1]; i++) {
+            uint8_t use_delta_flag = 0;
+            uint8_t used_by_curr_pic_flag = get_bits1(gb);
+            if (!used_by_curr_pic_flag)
+                use_delta_flag = get_bits1(gb);
+
+            if (used_by_curr_pic_flag || use_delta_flag)
+                num_delta_pocs[rps_idx]++;
+        }
+    } else {
+        unsigned int num_negative_pics = get_ue_golomb_long(gb);
+        unsigned int num_positive_pics = get_ue_golomb_long(gb);
+
+        num_delta_pocs[rps_idx] = num_negative_pics + num_positive_pics;
+
+        for (i = 0; i < num_negative_pics; i++) {
+            get_ue_golomb_long(gb); // delta_poc_s0_minus1[rps_idx]
+            skip_bits1        (gb); // used_by_curr_pic_s0_flag[rps_idx]
+        }
+
+        for (i = 0; i < num_positive_pics; i++) {
+            get_ue_golomb_long(gb); // delta_poc_s1_minus1[rps_idx]
+            skip_bits1        (gb); // used_by_curr_pic_s1_flag[rps_idx]
+        }
+    }
+
+    return 0;
 }
 
 static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
