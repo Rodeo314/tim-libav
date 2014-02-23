@@ -521,6 +521,14 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     return 0;
 }
 
+static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
+                          HEVCDecoderConfigurationRecord *hvcc)
+{
+    //fixme: incomplete
+    // nothing useful for hvcC past this point
+    return 0;
+}
+
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
     HEVC_DEBUG_LOG("data: %p, len: %d\n", data, len);
@@ -613,6 +621,9 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             if (ret < 0)
                 return ret;
             ret = hvcc_parse_sps(sps, sps_size, &hvcc);
+            if (ret < 0)
+                return ret;
+            ret = hvcc_parse_pps(pps, pps_size, &hvcc);
             if (ret < 0)
                 return ret;
 
