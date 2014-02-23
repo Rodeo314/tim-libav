@@ -80,26 +80,6 @@ static void dump_profile_tier_level(const char *buf_name, uint8_t *buf, int inde
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
 
-typedef struct HEVCDecoderConfigurationRecord {
-    uint8_t  configurationVersion;
-    uint8_t  general_profile_space;
-    uint8_t  general_tier_flag;
-    uint8_t  general_profile_idc;
-    uint32_t general_profile_compatibility_flags;
-    uint64_t general_constraint_indicator_flags;
-    uint8_t  general_level_idc;
-    uint16_t min_spatial_segmentation_idc;
-    uint8_t  parallelismType;
-    uint8_t  chromaFormat;
-    uint8_t  bitDepthLumaMinus8;
-    uint8_t  bitDepthChromaMinus8;
-    uint16_t avgFrameRate;
-    uint8_t  constantFrameRate;
-    uint8_t  numTemporalLayers;
-    uint8_t  temporalIdNested;
-    uint8_t  lengthSizeMinusOne;
-} HEVCDecoderConfigurationRecord;
-
 static const AVRational vui_sar[] = {
     {  0,   1 },
     {  1,   1 },
@@ -119,6 +99,13 @@ static const AVRational vui_sar[] = {
     {  3,   2 },
     {  2,   1 },
 };
+
+static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
+{
+    memset(hvcc, 0, sizeof(HEVCDecoderConfigurationRecord));
+    hvcc->configurationVersion = 1;
+    hvcc->lengthSizeMinusOne   = 3; // 4 bytes
+}
 
 static void parse_nal_header(GetBitContext *gb, uint8_t *nal_type)
 {
@@ -400,8 +387,8 @@ static void decode_vui(GetBitContext *gb, VUI *vui, int max_sub_layers_minus1)
     }
 }
 
-static int hevc_sps_to_hvcc(uint8_t *sps_buf, int sps_size,
-                            HEVCDecoderConfigurationRecord *hvcc)
+static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
+                          HEVCDecoderConfigurationRecord *hvcc)
 {
     uint8_t nal_type;
     GetBitContext gb;
@@ -617,10 +604,9 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             dump_profile_tier_level("SPS", sps, 6, -1);
 
 
-            HEVCDecoderConfigurationRecord hvcc = { 0 };
-            hvcc.configurationVersion = 1;
-            hvcc.lengthSizeMinusOne   = 1; /* XXX: 2 bytes: FIXME!!! */
-            ret = hevc_sps_to_hvcc(sps, sps_size, &hvcc);
+            HEVCDecoderConfigurationRecord hvcc;
+            hvcc_init(&hvcc);
+            ret = hvcc_parse_sps(sps, sps_size, &hvcc);
             if (ret < 0)
                 return ret;
 
@@ -663,36 +649,5 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             avio_write(pb, data, len);
         }
     }
-    return 0;
-}
-
-int ff_hevc_write_annexb_extradata(const uint8_t *in, uint8_t **buf, int *size)
-{
-    uint16_t sps_size, pps_size;
-    uint8_t *out;
-    int out_size;
-
-    *buf = NULL;
-    if (*size >= 4 && (AV_RB32(in) == 0x00000001 || AV_RB24(in) == 0x000001))
-        return 0;
-    if (*size < 11 || in[0] != 1)
-        return AVERROR_INVALIDDATA;
-
-    sps_size = AV_RB16(&in[6]);
-    if (11 + sps_size > *size)
-        return AVERROR_INVALIDDATA;
-    pps_size = AV_RB16(&in[9 + sps_size]);
-    if (11 + sps_size + pps_size > *size)
-        return AVERROR_INVALIDDATA;
-    out_size = 8 + sps_size + pps_size;
-    out = av_mallocz(out_size);
-    if (!out)
-        return AVERROR(ENOMEM);
-    AV_WB32(&out[0], 0x00000001);
-    memcpy(out + 4, &in[8], sps_size);
-    AV_WB32(&out[4 + sps_size], 0x00000001);
-    memcpy(out + 8 + sps_size, &in[11 + sps_size], pps_size);
-    *buf = out;
-    *size = out_size;
     return 0;
 }
