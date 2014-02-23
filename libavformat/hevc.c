@@ -629,14 +629,19 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
     if (len > 6) {
         /* check for H.265 start code */
         if (AV_RB32(data) == 0x00000001 || AV_RB24(data) == 0x000001) {
+            uint8_t *end, *start;
+            HEVCDecoderConfigurationRecord hvcc;
             uint32_t vps_size = 0, sps_size = 0, pps_size = 0;
-            uint8_t *buf = NULL, *end, *start, *vps = NULL, *sps = NULL, *pps = NULL;
+            uint8_t *buf = NULL, *vps = NULL, *sps = NULL, *pps = NULL;
 
             int ret = ff_avc_parse_nal_units_buf(data, &buf, &len);
             if (ret < 0)
                 return ret;
+
             start = buf;
             end   = buf + len;
+
+            hvcc_init(&hvcc);
 
             /* look for vps, sps and pps */
             while (end - buf > 4) {
@@ -656,17 +661,23 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 case NAL_VPS:
                     vps      = buf;
                     vps_size = size;
-                    HEVC_DEBUG_LOG("VPS with type: %d and size: %d\n", nal_type, size);
+                    ret      = hvcc_parse_vps(buf, size, &hvcc);
+                    if (ret < 0)
+                        return ret;
                     break;
                 case NAL_SPS:
                     sps      = buf;
                     sps_size = size;
-                    HEVC_DEBUG_LOG("SPS with type: %d and size: %d\n", nal_type, size);
+                    ret      = hvcc_parse_sps(buf, size, &hvcc);
+                    if (ret < 0)
+                        return ret;
                     break;
                 case NAL_PPS:
                     pps      = buf;
                     pps_size = size;
-                    HEVC_DEBUG_LOG("PPS with type: %d and size: %d\n", nal_type, size);
+                    ret      = hvcc_parse_pps(buf, size, &hvcc);
+                    if (ret < 0)
+                        return ret;
                     break;
                 default:
                     HEVC_DEBUG_LOG("NAL with type: %d and size: %d\n", nal_type, size);
@@ -682,6 +693,9 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 !pps || pps_size > UINT16_MAX) {
                 return AVERROR_INVALIDDATA;
             }
+            HEVC_DEBUG_LOG("VPS with size: %d\n", vps_size);
+            HEVC_DEBUG_LOG("SPS with size: %d\n", sps_size);
+            HEVC_DEBUG_LOG("PPS with size: %d\n", pps_size);
 
             /* Log the NAL unit's contents once we get here */
             av_log(NULL, AV_LOG_FATAL, "\n");
@@ -706,19 +720,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                        binar_ize((pps[i] & 0x0f)));
             }
             av_log(NULL, AV_LOG_FATAL, "\n");
-
-
-            HEVCDecoderConfigurationRecord hvcc;
-            hvcc_init(&hvcc);
-            ret = hvcc_parse_vps(vps, vps_size, &hvcc);
-            if (ret < 0)
-                return ret;
-            ret = hvcc_parse_sps(sps, sps_size, &hvcc);
-            if (ret < 0)
-                return ret;
-            ret = hvcc_parse_pps(pps, pps_size, &hvcc);
-            if (ret < 0)
-                return ret;
 
             /* HEVCDecoderConfigurationRecord */
             avio_w8  (pb, hvcc.configurationVersion);
