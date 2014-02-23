@@ -442,6 +442,7 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     if (get_bits1(gb)) // vui_parameters_present_flag
         hvcc_parse_vui(gb, hvcc, sps_max_sub_layers_minus1);
 
+    // nothing useful for hvcC past this point
     return 0;
 }
 
@@ -493,13 +494,14 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
             skip_bits1(gb); // layer_id_included_flag[i][j]
 
     //fixme: hvcc
-    if (get_bits1(gb)) {
+    if (get_bits1(gb)) {        // vps_timing_info_present_flag
         skip_bits_long(gb, 32); // vps_num_units_in_tick
         skip_bits_long(gb, 32); // vps_time_scale
 
         if (get_bits1(gb))          // vps_poc_proportional_to_timing_flag
             get_ue_golomb_long(gb); // vps_num_ticks_poc_diff_one_minus1
 
+        //fixme: do we need this at all?
         vps_num_hrd_parameters = get_ue_golomb_long(gb);
 
         for (i = 0; i < vps_num_hrd_parameters; i++) {
@@ -515,7 +517,7 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
         }
     }
 
-    //fixme: incomplete
+    // nothing useful for hvcC past this point
     return 0;
 }
 
