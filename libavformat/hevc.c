@@ -346,14 +346,15 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 
     nal_unit_parse_header(&gb, &nal_type);
     if (nal_type != NAL_SPS)
-        return AVERROR_INVALIDDATA;
+        return AVERROR_BUG;
 
     // FIXME: clearly there's something here (extract_rbsp)?
 
     skip_bits(&gb, 4); // sps_video_parameter_set_id
 
     sps_max_sub_layers_minus1 = get_bits (&gb, 3);
-    hvcc->temporalIdNested    = get_bits1(&gb);
+
+    hvcc->temporalIdNested |= get_bits1(&gb);
 
     hvcc_parse_ptl(&gb, hvcc, sps_max_sub_layers_minus1);
 
@@ -434,6 +435,41 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     if (get_bits1(&gb)) // vui_parameters_present_flag
         hvcc_parse_vui(&gb, hvcc, sps_max_sub_layers_minus1);
 
+    return 0;
+}
+
+static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
+                          HEVCDecoderConfigurationRecord *hvcc)
+{
+    uint8_t nal_type;
+    GetBitContext gb;
+    int ret;
+    uint8_t vps_max_layers_minus1, vps_max_sub_layers_minus1;
+
+    ret = init_get_bits8(&gb, vps_buf, vps_size);
+    if (ret < 0)
+        return ret;
+
+    nal_unit_parse_header(&gb, &nal_type);
+    if (nal_type != NAL_VPS)
+        return AVERROR_BUG;
+
+    // FIXME: clearly there's something here (extract_rbsp)?
+
+    // vps_video_parameter_set_id u(4)
+    // vps_reserved_three_2bits   u(2)
+    skip_bits(&gb, 6);
+
+    vps_max_layers_minus1     = get_bits(&gb, 6);
+    vps_max_sub_layers_minus1 = get_bits(&gb, 3);
+
+    hvcc->temporalIdNested |= get_bits1(&gb);
+
+    skip_bits(&gb, 16); // vps_reserved_0xffff_16bits
+
+    hvcc_parse_ptl(&gb, hvcc, vps_max_sub_layers_minus1);
+
+    //fixme: incomplete
     return 0;
 }
 
@@ -525,6 +561,9 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 
             HEVCDecoderConfigurationRecord hvcc;
             hvcc_init(&hvcc);
+            ret = hvcc_parse_vps(vps, vps_size, &hvcc);
+            if (ret < 0)
+                return ret;
             ret = hvcc_parse_sps(sps, sps_size, &hvcc);
             if (ret < 0)
                 return ret;
