@@ -75,48 +75,55 @@ static void parse_nal_header(GetBitContext *gb, uint8_t *nal_type)
     skip_bits(gb, 3); // nuh_temporal_id_plus1
 }
 
-static void decode_profile_tier_level(GetBitContext *gb, PTLCommon *ptl)
+static void hvcc_parse_ptl(GetBitContext *gb,
+                           HEVCDecoderConfigurationRecord *hvcc,
+                           int max_sub_layers_minus1)
 {
-    int i;
+    int i, num_sub_layers;
+    uint8_t  general_profile_space;
+    uint8_t  general_tier_flag;
+    uint8_t  general_profile_idc;
+    uint32_t general_profile_compatibility_flags;
+    uint64_t general_constraint_indicator_flags;
+    uint8_t  general_level_idc;
+    uint8_t  sub_layer_profile_present_flag[MAX_SUB_LAYERS];
+    uint8_t  sub_layer_level_present_flag[MAX_SUB_LAYERS];
+
+    general_profile_space               = get_bits     (gb, 2);
+    general_tier_flag                   = get_bits1    (gb);
+    general_profile_idc                 = get_bits     (gb, 5);
+    general_profile_compatibility_flags = get_bits_long(gb, 32);
+    general_constraint_indicator_flags  = get_bits64   (gb, 48);
+    general_level_idc                   = get_bits     (gb, 8);
+
+    //fixme?
+    hvcc->general_profile_space                = FFMAX(general_profile_space, hvcc->general_profile_space);
+    hvcc->general_tier_flag                   |= general_tier_flag;
+    hvcc->general_profile_idc                  = FFMAX(general_profile_idc, hvcc->general_profile_idc);
+    hvcc->general_level_idc                    = FFMAX(general_level_idc, hvcc->general_level_idc);
+    hvcc->general_profile_compatibility_flags |= general_profile_compatibility_flags;
+    hvcc->general_constraint_indicator_flags  |= general_constraint_indicator_flags;
+
+    num_sub_layers = FFMIN(max_sub_layers_minus1, MAX_SUB_LAYERS);
     
-    ptl->profile_space = get_bits (gb, 2);
-    ptl->tier_flag     = get_bits1(gb);
-    ptl->profile_idc   = get_bits (gb, 5);
-
-    for (i = 0; i < 32; i++)
-        ptl->profile_compatibility_flag[i] = get_bits1(gb);
-
-    ptl->progressive_source_flag    = get_bits1(gb);
-    ptl->interlaced_source_flag     = get_bits1(gb);
-    ptl->non_packed_constraint_flag = get_bits1(gb);
-    ptl->frame_only_constraint_flag = get_bits1(gb);
-    
-    skip_bits_long(gb, 32); // reserved_zero_44bits[ 0..31]
-    skip_bits     (gb, 12); // reserved_zero_44bits[32..43]
-}
-
-static void parse_ptl(GetBitContext *gb, PTL *ptl, int max_sub_layers_minus1)
-{
-    int i;
-
-    decode_profile_tier_level(gb, &ptl->general_ptl);
-    ptl->general_ptl.level_idc = get_bits(gb, 8);
-    
-    for (i = 0; i < max_sub_layers_minus1; i++) {
-        ptl->sub_layer_profile_present_flag[i] = get_bits1(gb);
-        ptl->sub_layer_level_present_flag[i]   = get_bits1(gb);
+    for (i = 0; i < num_sub_layers; i++) {
+        sub_layer_profile_present_flag[i] = get_bits1(gb);
+        sub_layer_level_present_flag[i]   = get_bits1(gb);
     }
 
-    if (max_sub_layers_minus1 > 0)
-        for (i = max_sub_layers_minus1; i < 8; i++)
+    if (num_sub_layers > 0)
+        for (i = num_sub_layers; i < 8; i++)
             skip_bits(gb, 2); // reserved_zero_2bits[i]
 
-    for (i = 0; i < max_sub_layers_minus1; i++) {
-        if (ptl->sub_layer_profile_present_flag[i])
-            decode_profile_tier_level(gb, &ptl->sub_layer_ptl[i]);
+    for (i = 0; i < num_sub_layers; i++) {
+        if (sub_layer_profile_present_flag[i]) {
+            skip_bits_long(gb, 32);
+            skip_bits_long(gb, 32);
+            skip_bits     (gb, 24);
+        }
 
-        if (ptl->sub_layer_level_present_flag[i])
-            ptl->sub_layer_ptl[i].level_idc = get_bits(gb, 8);
+        if (sub_layer_level_present_flag[i])
+            skip_bits(gb, 8);
     }
 }
 
@@ -350,7 +357,6 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 {
     uint8_t nal_type;
     GetBitContext gb;
-    PTL ptl = { { 0 } };
     VUI vui = { { 0 } };
     int i, ret;
     int log2_max_pic_order_cnt_lsb_minus4;
@@ -372,17 +378,7 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     sps_max_sub_layers_minus1 = get_bits (&gb, 3);
     hvcc->temporalIdNested    = get_bits1(&gb);
 
-    parse_ptl(&gb, &ptl, sps_max_sub_layers_minus1);
-    hvcc->general_profile_space = ptl.general_ptl.profile_space;
-    hvcc->general_tier_flag     = ptl.general_ptl.tier_flag;
-    hvcc->general_profile_idc   = ptl.general_ptl.profile_idc;
-    hvcc->general_level_idc     = ptl.general_ptl.level_idc;
-    for (i = 0; i < 31; i++)
-        hvcc->general_profile_compatibility_flags |= (uint32_t)ptl.general_ptl.profile_compatibility_flag[i] << (31 - i);
-    hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.progressive_source_flag    << 47;
-    hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.interlaced_source_flag     << 46;
-    hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.non_packed_constraint_flag << 45;
-    hvcc->general_constraint_indicator_flags |= (uint64_t)ptl.general_ptl.frame_only_constraint_flag << 44;
+    hvcc_parse_ptl(&gb, hvcc, sps_max_sub_layers_minus1);
 
     get_ue_golomb_long(&gb); // sps_seq_parameter_set_id
 
