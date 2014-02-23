@@ -192,6 +192,70 @@ static void skip_hrd_parameters(GetBitContext *gb, int common_inf_present_flag,
     }
 }
 
+static void hvcc_parse_vui(GetBitContext *gb,
+                           HEVCDecoderConfigurationRecord *hvcc,
+                           int max_sub_layers_minus1)
+{
+    if (get_bits1(gb))              // aspect_ratio_info_present_flag
+        if (get_bits(gb, 8) == 255) // aspect_ratio_idc
+            skip_bits_long(gb, 32); // sar_width u(16), sar_height u(16)
+
+    if (get_bits1(gb))  // overscan_info_present_flag
+        skip_bits1(gb); // overscan_appropriate_flag
+
+    if (get_bits1(gb)) {  // video_signal_type_present_flag
+        skip_bits(gb, 4); // video_format u(3), video_full_range_flag u(1)
+
+        if (get_bits1(gb)) // colour_description_present_flag
+            // colour_primaries         u(8)
+            // transfer_characteristics u(8)
+            // matrix_coeffs            u(8)
+            skip_bits(gb, 24);
+    }
+
+    if (get_bits1(gb)) {        // chroma_loc_info_present_flag
+        get_ue_golomb_long(gb); // chroma_sample_loc_type_top_field
+        get_ue_golomb_long(gb); // chroma_sample_loc_type_bottom_field
+    }
+
+    // neutral_chroma_indication_flag u(1)
+    // field_seq_flag                 u(1)
+    // frame_field_info_present_flag  u(1)
+    skip_bits(gb, 3);
+
+    if (get_bits1(gb)) {        // default_display_window_flag
+        get_ue_golomb_long(gb); // def_disp_win_left_offset
+        get_ue_golomb_long(gb); // def_disp_win_right_offset
+        get_ue_golomb_long(gb); // def_disp_win_top_offset
+        get_ue_golomb_long(gb); // def_disp_win_bottom_offset
+    }
+
+    //fixme: hvcc
+    if (get_bits1(gb)) {        // vui_timing_info_present_flag
+        skip_bits_long(gb, 32); // vui_num_units_in_tick
+        skip_bits_long(gb, 32); // vui_time_scale
+
+        if (get_bits1(gb))          // vui_poc_proportional_to_timing_flag
+            get_ue_golomb_long(gb); // vui_num_ticks_poc_diff_one_minus1
+
+        if (get_bits1(gb)) // vui_hrd_parameters_present_flag
+            skip_hrd_parameters(gb, 1, max_sub_layers_minus1);
+    }
+
+    //fixme: hvcc
+    if (get_bits1(gb)) { // bitstream_restriction_flag
+        // tiles_fixed_structure_flag              u(1)
+        // motion_vectors_over_pic_boundaries_flag u(1)
+        // restricted_ref_pic_lists_flag           u(1)
+        skip_bits(gb, 3);
+        get_ue_golomb_long(gb); // min_spatial_segmentation_idc
+        get_ue_golomb_long(gb); // max_bytes_per_pic_denom
+        get_ue_golomb_long(gb); // max_bits_per_min_cu_denom
+        get_ue_golomb_long(gb); // log2_max_mv_length_horizontal
+        get_ue_golomb_long(gb); // log2_max_mv_length_vertical
+    }
+}
+
 static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
@@ -265,70 +329,6 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
 
     // nothing useful for hvcC past this point
     return 0;
-}
-
-static void hvcc_parse_vui(GetBitContext *gb,
-                           HEVCDecoderConfigurationRecord *hvcc,
-                           int max_sub_layers_minus1)
-{
-    if (get_bits1(gb))              // aspect_ratio_info_present_flag
-        if (get_bits(gb, 8) == 255) // aspect_ratio_idc
-            skip_bits_long(gb, 32); // sar_width u(16), sar_height u(16)
-
-    if (get_bits1(gb))  // overscan_info_present_flag
-        skip_bits1(gb); // overscan_appropriate_flag
-
-    if (get_bits1(gb)) {  // video_signal_type_present_flag
-        skip_bits(gb, 4); // video_format u(3), video_full_range_flag u(1)
-
-        if (get_bits1(gb)) // colour_description_present_flag
-            // colour_primaries         u(8)
-            // transfer_characteristics u(8)
-            // matrix_coeffs            u(8)
-            skip_bits(gb, 24);
-    }
-
-    if (get_bits1(gb)) {        // chroma_loc_info_present_flag
-        get_ue_golomb_long(gb); // chroma_sample_loc_type_top_field
-        get_ue_golomb_long(gb); // chroma_sample_loc_type_bottom_field
-    }
-
-    // neutral_chroma_indication_flag u(1)
-    // field_seq_flag                 u(1)
-    // frame_field_info_present_flag  u(1)
-    skip_bits(gb, 3);
-
-    if (get_bits1(gb)) {        // default_display_window_flag
-        get_ue_golomb_long(gb); // def_disp_win_left_offset
-        get_ue_golomb_long(gb); // def_disp_win_right_offset
-        get_ue_golomb_long(gb); // def_disp_win_top_offset
-        get_ue_golomb_long(gb); // def_disp_win_bottom_offset
-    }
-
-    //fixme: hvcc
-    if (get_bits1(gb)) {        // vui_timing_info_present_flag
-        skip_bits_long(gb, 32); // vui_num_units_in_tick
-        skip_bits_long(gb, 32); // vui_time_scale
-
-        if (get_bits1(gb))          // vui_poc_proportional_to_timing_flag
-            get_ue_golomb_long(gb); // vui_num_ticks_poc_diff_one_minus1
-
-        if (get_bits1(gb)) // vui_hrd_parameters_present_flag
-            skip_hrd_parameters(gb, 1, max_sub_layers_minus1);
-    }
-
-    //fixme: hvcc
-    if (get_bits1(gb)) { // bitstream_restriction_flag
-        // tiles_fixed_structure_flag              u(1)
-        // motion_vectors_over_pic_boundaries_flag u(1)
-        // restricted_ref_pic_lists_flag           u(1)
-        skip_bits(gb, 3);
-        get_ue_golomb_long(gb); // min_spatial_segmentation_idc
-        get_ue_golomb_long(gb); // max_bytes_per_pic_denom
-        get_ue_golomb_long(gb); // max_bits_per_min_cu_denom
-        get_ue_golomb_long(gb); // log2_max_mv_length_horizontal
-        get_ue_golomb_long(gb); // log2_max_mv_length_vertical
-    }
 }
 
 static void skip_scaling_list_data(GetBitContext *gb)
