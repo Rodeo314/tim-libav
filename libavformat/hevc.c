@@ -234,21 +234,24 @@ static void skip_hrd_parameters(GetBitContext *gb, int max_sub_layers_minus1)
     if (nal_hrd_parameters_present_flag || vcl_hrd_parameters_present_flag) {
         sub_pic_hrd_params_present_flag = get_bits1(gb);
         if (sub_pic_hrd_params_present_flag) {
-            skip_bits(gb, 8); // tick_divisor_minus2
-            skip_bits(gb, 5); // du_cpb_removal_delay_increment_length_minus1
-            skip_bits(gb, 1); // sub_pic_cpb_params_in_pic_timing_sei_flag
-            skip_bits(gb, 5); // dpb_output_delay_du_length_minus1
+            // tick_divisor_minus2                          u(8)
+            // du_cpb_removal_delay_increment_length_minus1 u(5)
+            // sub_pic_cpb_params_in_pic_timing_sei_flag    u(1)
+            // dpb_output_delay_du_length_minus1            u(5)
+            skip_bits(gb, 19);
         }
 
-        skip_bits(gb, 4); // bit_rate_scale
-        skip_bits(gb, 4); // cpb_size_scale
+        // bit_rate_scale u(4)
+        // cpb_size_scale u(4)
+        skip_bits(gb, 8);
 
         if (sub_pic_hrd_params_present_flag)
             skip_bits(gb, 4);  // cpb_size_du_scale
 
-        skip_bits(gb, 5); // initial_cpb_removal_delay_length_minus1
-        skip_bits(gb, 5); // au_cpb_removal_delay_length_minus1
-        skip_bits(gb, 5); // dpb_output_delay_length_minus1
+        // initial_cpb_removal_delay_length_minus1 u(5)
+        // au_cpb_removal_delay_length_minus1      u(5)
+        // dpb_output_delay_length_minus1          u(5)
+        skip_bits(gb, 15);
     }
 
     for (i = 0; i <= max_sub_layers_minus1; i++) {
@@ -256,99 +259,89 @@ static void skip_hrd_parameters(GetBitContext *gb, int max_sub_layers_minus1)
         int low_delay_hrd_flag             = 0;
         int fixed_pic_rate_within_cvs_flag = 0;
         int fixed_pic_rate_general_flag    = get_bits1(gb);
-        
+
         if (!fixed_pic_rate_general_flag)
             fixed_pic_rate_within_cvs_flag = get_bits1(gb);
-        
+
         if (fixed_pic_rate_within_cvs_flag)
             get_ue_golomb_long(gb);  // elemental_duration_in_tc_minus1
         else
             low_delay_hrd_flag = get_bits1(gb);
-        
+
         if (!low_delay_hrd_flag)
             cpb_cnt_minus1 = get_ue_golomb_long(gb);
-        
+
         if (nal_hrd_parameters_present_flag)
             skip_sub_layer_hrd_parameters(gb, cpb_cnt_minus1,
                                           sub_pic_hrd_params_present_flag);
+
         if (vcl_hrd_parameters_present_flag)
             skip_sub_layer_hrd_parameters(gb, cpb_cnt_minus1,
                                           sub_pic_hrd_params_present_flag);
     }
 }
 
-static void decode_vui(GetBitContext *gb, VUI *vui, int max_sub_layers_minus1)
+static void hvcc_parse_vui(GetBitContext *gb,
+                           HEVCDecoderConfigurationRecord *hvcc,
+                           int max_sub_layers_minus1)
 {
-    if (get_bits1(gb)) { // aspect_ratio_info_present_flag
-        uint8_t sar_idx = get_bits(gb, 8);
-        if (sar_idx < FF_ARRAY_ELEMS(vui_sar))
-            vui->sar = vui_sar[sar_idx];
-        else if (sar_idx == 255) {
-            vui->sar.num = get_bits(gb, 16);
-            vui->sar.den = get_bits(gb, 16);
-        }
+    if (get_bits1(gb))              // aspect_ratio_info_present_flag
+        if (get_bits(gb, 8) == 255) // aspect_ratio_idc
+            skip_bits_long(gb, 32); // sar_width u(16), sar_height u(16)
+
+    if (get_bits1(gb))  // overscan_info_present_flag
+        skip_bits1(gb); // overscan_appropriate_flag
+
+    if (get_bits1(gb)) {  // video_signal_type_present_flag
+        skip_bits(gb, 4); // video_format u(3), video_full_range_flag u(1)
+
+        if (get_bits1(gb)) // colour_description_present_flag
+            // colour_primaries         u(8)
+            // transfer_characteristics u(8)
+            // matrix_coeffs            u(8)
+            skip_bits(gb, 24);
     }
 
-    vui->overscan_info_present_flag = get_bits1(gb);
-    if (vui->overscan_info_present_flag)
-        vui->overscan_appropriate_flag = get_bits1(gb);
-
-    vui->video_signal_type_present_flag = get_bits1(gb);
-    if (vui->video_signal_type_present_flag) {
-        vui->video_format          = get_bits (gb, 3);
-        vui->video_full_range_flag = get_bits1(gb);
-
-        vui->colour_description_present_flag = get_bits1(gb);
-        if (vui->colour_description_present_flag) {
-            vui->colour_primaries        = get_bits(gb, 8);
-            vui->transfer_characteristic = get_bits(gb, 8);
-            vui->matrix_coeffs           = get_bits(gb, 8);
-        }
+    if (get_bits1(gb)) {        // chroma_loc_info_present_flag
+        get_ue_golomb_long(gb); // chroma_sample_loc_type_top_field
+        get_ue_golomb_long(gb); // chroma_sample_loc_type_bottom_field
     }
 
-    vui->chroma_loc_info_present_flag = get_bits1(gb);
-    if (vui->chroma_loc_info_present_flag) {
-        vui->chroma_sample_loc_type_top_field    = get_ue_golomb_long(gb);
-        vui->chroma_sample_loc_type_bottom_field = get_ue_golomb_long(gb);
+    // neutral_chroma_indication_flag u(1)
+    // field_seq_flag                 u(1)
+    // frame_field_info_present_flag  u(1)
+    skip_bits(gb, 3);
+
+    if (get_bits1(gb)) {        // default_display_window_flag
+        get_ue_golomb_long(gb); // def_disp_win_left_offset
+        get_ue_golomb_long(gb); // def_disp_win_right_offset
+        get_ue_golomb_long(gb); // def_disp_win_top_offset
+        get_ue_golomb_long(gb); // def_disp_win_bottom_offset
     }
 
-    vui->neutra_chroma_indication_flag = get_bits1(gb);
-    vui->field_seq_flag                = get_bits1(gb);
-    vui->frame_field_info_present_flag = get_bits1(gb);
+    //fixme: hvcc
+    if (get_bits1(gb)) {        // vui_timing_info_present_flag
+        skip_bits_long(gb, 32); // vui_num_units_in_tick
+        skip_bits_long(gb, 32); // vui_time_scale
 
-    vui->default_display_window_flag = get_bits1(gb);
-    if (vui->default_display_window_flag) {
-        // TODO: * 2 is only valid for 4:2:0
-        vui->def_disp_win.left_offset   = get_ue_golomb_long(gb) * 2;
-        vui->def_disp_win.right_offset  = get_ue_golomb_long(gb) * 2;
-        vui->def_disp_win.top_offset    = get_ue_golomb_long(gb) * 2;
-        vui->def_disp_win.bottom_offset = get_ue_golomb_long(gb) * 2;
-    }
+        if (get_bits1(gb))          // vui_poc_proportional_to_timing_flag
+            get_ue_golomb_long(gb); // vui_num_ticks_poc_diff_one_minus1
 
-    vui->vui_timing_info_present_flag = get_bits1(gb);
-    if (vui->vui_timing_info_present_flag) {
-        vui->vui_num_units_in_tick = get_bits_long(gb, 32);
-        vui->vui_time_scale        = get_bits_long(gb, 32);
-
-        vui->vui_poc_proportional_to_timing_flag = get_bits1(gb);
-        if (vui->vui_poc_proportional_to_timing_flag)
-            vui->vui_num_ticks_poc_diff_one_minus1 = get_ue_golomb_long(gb);
-
-        vui->vui_hrd_parameters_present_flag = get_bits1(gb);
-        if (vui->vui_hrd_parameters_present_flag)
+        if (get_bits1(gb)) // vui_hrd_parameters_present_flag
             skip_hrd_parameters(gb, max_sub_layers_minus1);
     }
 
-    vui->bitstream_restriction_flag = get_bits1(gb);
-    if (vui->bitstream_restriction_flag) {
-        vui->tiles_fixed_structure_flag              = get_bits1(gb);
-        vui->motion_vectors_over_pic_boundaries_flag = get_bits1(gb);
-        vui->restricted_ref_pic_lists_flag           = get_bits1(gb);
-        vui->min_spatial_segmentation_idc            = get_ue_golomb_long(gb);
-        vui->max_bytes_per_pic_denom                 = get_ue_golomb_long(gb);
-        vui->max_bits_per_min_cu_denom               = get_ue_golomb_long(gb);
-        vui->log2_max_mv_length_horizontal           = get_ue_golomb_long(gb);
-        vui->log2_max_mv_length_vertical             = get_ue_golomb_long(gb);
+    //fixme: hvcc
+    if (get_bits1(gb)) { // bitstream_restriction_flag
+        // tiles_fixed_structure_flag              u(1)
+        // motion_vectors_over_pic_boundaries_flag u(1)
+        // restricted_ref_pic_lists_flag           u(1)
+        skip_bits(gb, 3);
+        get_ue_golomb_long(gb); // min_spatial_segmentation_idc
+        get_ue_golomb_long(gb); // max_bytes_per_pic_denom
+        get_ue_golomb_long(gb); // max_bits_per_min_cu_denom
+        get_ue_golomb_long(gb); // log2_max_mv_length_horizontal
+        get_ue_golomb_long(gb); // log2_max_mv_length_vertical
     }
 }
 
@@ -357,7 +350,6 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 {
     uint8_t nal_type;
     GetBitContext gb;
-    VUI vui = { { 0 } };
     int i, ret;
     int log2_max_pic_order_cnt_lsb_minus4;
     int chroma_format_idc, sps_max_sub_layers_minus1;
@@ -454,13 +446,8 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     skip_bits1(&gb); // sps_temporal_mvp_enabled_flag
     skip_bits1(&gb); // strong_intra_smoothing_enabled_flag
 
-    hvcc->min_spatial_segmentation_idc = 0;
-    hvcc->parallelismType              = 0;
-    if (get_bits1(&gb)) { // vui_parameters_present_flag
-        decode_vui(&gb, &vui, sps_max_sub_layers_minus1);
-        if (vui.bitstream_restriction_flag)
-            hvcc->min_spatial_segmentation_idc = vui.min_spatial_segmentation_idc;
-    }
+    if (get_bits1(&gb)) // vui_parameters_present_flag
+        hvcc_parse_vui(&gb, hvcc, sps_max_sub_layers_minus1);
 
     return 0;
 }
