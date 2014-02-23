@@ -55,6 +55,15 @@ typedef struct HEVCDecoderConfigurationRecord {
     uint8_t  lengthSizeMinusOne;
 } HEVCDecoderConfigurationRecord;
 
+typedef struct HVCCProfileTierLevel {
+    uint8_t  profile_space;
+    uint8_t  tier_flag;
+    uint8_t  profile_idc;
+    uint32_t profile_compatibility_flags;
+    uint64_t constraint_indicator_flags;
+    uint8_t  level_idc;
+} HVCCProfileTierLevel;
+
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len);
 
 #endif /* AVFORMAT_HEVC_H */

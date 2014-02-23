@@ -44,34 +44,39 @@ static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
     hvcc->lengthSizeMinusOne   = 3; // 4 bytes
 }
 
+static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
+                            HVCCProfileTierLevel *ptl)
+{
+    if (hvcc->general_profile_space < ptl->profile_space)
+        hvcc->general_profile_space = ptl->profile_space;
+
+    if (hvcc->general_profile_idc < ptl->profile_idc)
+        hvcc->general_profile_idc = ptl->profile_idc;
+
+    if (hvcc->general_level_idc < ptl->level_idc)
+        hvcc->general_level_idc = ptl->level_idc;
+
+    hvcc->general_tier_flag                   |= ptl->tier_flag;
+    hvcc->general_profile_compatibility_flags |= ptl->profile_compatibility_flags;
+    hvcc->general_constraint_indicator_flags  |= ptl->constraint_indicator_flags;
+}
+
 static void hvcc_parse_ptl(GetBitContext *gb,
                            HEVCDecoderConfigurationRecord *hvcc,
                            int max_sub_layers_minus1)
 {
     int i, num_sub_layers;
-    uint8_t  general_profile_space;
-    uint8_t  general_tier_flag;
-    uint8_t  general_profile_idc;
-    uint32_t general_profile_compatibility_flags;
-    uint64_t general_constraint_indicator_flags;
-    uint8_t  general_level_idc;
-    uint8_t  sub_layer_profile_present_flag[MAX_SUB_LAYERS];
-    uint8_t  sub_layer_level_present_flag[MAX_SUB_LAYERS];
+    HVCCProfileTierLevel general_ptl;
+    uint8_t sub_layer_profile_present_flag[MAX_SUB_LAYERS];
+    uint8_t sub_layer_level_present_flag[MAX_SUB_LAYERS];
 
-    general_profile_space               = get_bits     (gb, 2);
-    general_tier_flag                   = get_bits1    (gb);
-    general_profile_idc                 = get_bits     (gb, 5);
-    general_profile_compatibility_flags = get_bits_long(gb, 32);
-    general_constraint_indicator_flags  = get_bits64   (gb, 48);
-    general_level_idc                   = get_bits     (gb, 8);
-
-    //fixme?
-    hvcc->general_profile_space                = FFMAX(general_profile_space, hvcc->general_profile_space);
-    hvcc->general_tier_flag                   |= general_tier_flag;
-    hvcc->general_profile_idc                  = FFMAX(general_profile_idc, hvcc->general_profile_idc);
-    hvcc->general_level_idc                    = FFMAX(general_level_idc, hvcc->general_level_idc);
-    hvcc->general_profile_compatibility_flags |= general_profile_compatibility_flags;
-    hvcc->general_constraint_indicator_flags  |= general_constraint_indicator_flags;
+    general_ptl.profile_space               = get_bits     (gb, 2);
+    general_ptl.tier_flag                   = get_bits1    (gb);
+    general_ptl.profile_idc                 = get_bits     (gb, 5);
+    general_ptl.profile_compatibility_flags = get_bits_long(gb, 32);
+    general_ptl.constraint_indicator_flags  = get_bits64   (gb, 48);
+    general_ptl.level_idc                   = get_bits     (gb, 8);
+    hvcc_update_ptl(hvcc, &general_ptl);
 
     num_sub_layers = FFMIN(max_sub_layers_minus1, MAX_SUB_LAYERS);
     
@@ -86,6 +91,15 @@ static void hvcc_parse_ptl(GetBitContext *gb,
 
     for (i = 0; i < num_sub_layers; i++) {
         if (sub_layer_profile_present_flag[i]) {
+            // sub_layer_profile_space[i]                     u(2)
+            // sub_layer_tier_flag[i]                         u(1)
+            // sub_layer_profile_idc[i]                       u(5)
+            // sub_layer_profile_compatibility_flag[i][0..31] u(32)
+            // sub_layer_progressive_source_flag[i]           u(1)
+            // sub_layer_interlaced_source_flag[i]            u(1)
+            // sub_layer_non_packed_constraint_flag[i]        u(1)
+            // sub_layer_frame_only_constraint_flag[i]        u(1)
+            // sub_layer_reserved_zero_44bits[i]              u(44)
             skip_bits_long(gb, 32);
             skip_bits_long(gb, 32);
             skip_bits     (gb, 24);
