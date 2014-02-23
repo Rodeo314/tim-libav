@@ -65,7 +65,7 @@ static void hvcc_parse_ptl(GetBitContext *gb,
                            HEVCDecoderConfigurationRecord *hvcc,
                            int max_sub_layers_minus1)
 {
-    int i, num_sub_layers;
+    int i;
     HVCCProfileTierLevel general_ptl;
     uint8_t sub_layer_profile_present_flag[MAX_SUB_LAYERS];
     uint8_t sub_layer_level_present_flag[MAX_SUB_LAYERS];
@@ -78,19 +78,16 @@ static void hvcc_parse_ptl(GetBitContext *gb,
     general_ptl.level_idc                   = get_bits     (gb, 8);
     hvcc_update_ptl(hvcc, &general_ptl);
 
-    //fixme: max_sub_layers_minus1 is 3-bit field, this is overkill
-    num_sub_layers = FFMIN(max_sub_layers_minus1, MAX_SUB_LAYERS);
-
-    for (i = 0; i < num_sub_layers; i++) {
+    for (i = 0; i < max_sub_layers_minus1; i++) {
         sub_layer_profile_present_flag[i] = get_bits1(gb);
         sub_layer_level_present_flag[i]   = get_bits1(gb);
     }
 
-    if (num_sub_layers > 0)
-        for (i = num_sub_layers; i < 8; i++)
+    if (max_sub_layers_minus1 > 0)
+        for (i = max_sub_layers_minus1; i < 8; i++)
             skip_bits(gb, 2); // reserved_zero_2bits[i]
 
-    for (i = 0; i < num_sub_layers; i++) {
+    for (i = 0; i < max_sub_layers_minus1; i++) {
         if (sub_layer_profile_present_flag[i]) {
             // sub_layer_profile_space[i]                     u(2)
             // sub_layer_tier_flag[i]                         u(1)
