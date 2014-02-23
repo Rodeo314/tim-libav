@@ -319,7 +319,7 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
         if (get_bits1(gb))     // vps_poc_proportional_to_timing_flag
             get_ue_golomb(gb); // vps_num_ticks_poc_diff_one_minus1
 
-        //fixme: do we need this at all?
+        // FIXME: do we need this at all?
         vps_num_hrd_parameters = get_ue_golomb(gb);
 
         for (i = 0; i < vps_num_hrd_parameters; i++) {
