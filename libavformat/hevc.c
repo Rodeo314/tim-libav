@@ -293,7 +293,7 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
     vps_max_layers_minus1     = get_bits(gb, 6);
     vps_max_sub_layers_minus1 = get_bits(gb, 3);
 
-    hvcc->temporalIdNested |= get_bits1(gb);
+    skip_bits1(gb); // vps_temporal_id_nesting_flag
 
     skip_bits(gb, 16); // vps_reserved_0xffff_16bits
 
@@ -445,7 +445,7 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 
     sps_max_sub_layers_minus1 = get_bits (gb, 3);
 
-    hvcc->temporalIdNested |= get_bits1(gb);
+    hvcc->temporalIdNested = get_bits1(gb);
 
     hvcc_parse_ptl(gb, hvcc, sps_max_sub_layers_minus1);
 
