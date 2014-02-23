@@ -524,7 +524,89 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    //fixme: incomplete
+    int i, ret;
+    uint8_t nal_type, tiles_enabled_flag;
+    GetBitContext gbc, *gb = &gbc;
+
+    ret = init_get_bits8(gb, pps_buf, pps_size);
+    if (ret < 0)
+        return ret;
+
+    nal_unit_parse_header(gb, &nal_type);
+    if (nal_type != NAL_PPS)
+        return AVERROR_BUG;
+
+    // FIXME: clearly there's something here (extract_rbsp)?
+
+    get_ue_golomb_long(gb); // pps_pic_parameter_set_id
+    get_ue_golomb_long(gb); // pps_seq_parameter_set_id
+
+    // dependent_slice_segments_enabled_flag u(1)
+    // output_flag_present_flag              u(1)
+    // num_extra_slice_header_bits           u(3)
+    // sign_data_hiding_enabled_flag         u(1)
+    // cabac_init_present_flag               u(1)
+    skip_bits(gb, 7);
+
+    get_ue_golomb_long(gb); // num_ref_idx_l0_default_active_minus1
+    get_ue_golomb_long(gb); // num_ref_idx_l1_default_active_minus1
+
+    get_se_golomb(gb); // init_qp_minus26
+
+    // constrained_intra_pred_flag u(1)
+    // transform_skip_enabled_flag u(1)
+    skip_bits(gb, 2);
+
+    if (get_bits1(gb))          // cu_qp_delta_enabled_flag
+        get_ue_golomb_long(gb); // diff_cu_qp_delta_depth
+
+    get_se_golomb(gb); // pps_cb_qp_offset
+    get_se_golomb(gb); // pps_cr_qp_offset
+
+    //fixme: hvcc
+    // weighted_pred_flag               u(1)
+    // weighted_bipred_flag             u(1)
+    // transquant_bypass_enabled_flag   u(1)
+    skip_bits(gb, 3);
+
+    tiles_enabled_flag = get_bits1(gb);
+
+    skip_bits1(gb); // entropy_coding_sync_enabled_flag
+
+    if (tiles_enabled_flag) {
+        int num_tile_columns_minus1 = get_ue_golomb_long(gb);
+        int num_tile_rows_minus1    = get_ue_golomb_long(gb);
+        if (!get_bits1(gb)) { // uniform_spacing_flag
+            for (i = 0; i < num_tile_columns_minus1; i++)
+                get_ue_golomb_long(gb); // column_width_minus1[i]
+
+            for (i = 0; i < num_tile_rows_minus1; i++)
+                get_ue_golomb_long(gb); // row_height_minus1[i]
+
+            skip_bits1(gb); // loop_filter_across_tiles_enabled_flag
+        }
+    }
+
+    skip_bits1(gb); // pps_loop_filter_across_slices_enabled_flag
+
+    if (get_bits1(gb)) { // deblocking_filter_control_present_flag
+        skip_bits1(gb);  // deblocking_filter_override_enabled_flag
+
+        if (!get_bits1(gb)) {  // pps_deblocking_filter_disabled_flag
+            get_se_golomb(gb); // pps_beta_offset_div2
+            get_se_golomb(gb); // pps_tc_offset_div2
+        }
+    }
+
+    if (get_bits1(gb)) // pps_scaling_list_data_present_flag
+        skip_scaling_list_data(gb);
+
+    skip_bits1(gb); // lists_modification_present_flag
+
+    get_ue_golomb_long(gb); // log2_parallel_merge_level_minus2
+
+    skip_bits1(gb); // slice_segment_header_extension_present_flag
+
     // nothing useful for hvcC past this point
     return 0;
 }
