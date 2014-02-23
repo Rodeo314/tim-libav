@@ -524,7 +524,7 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
     int i, ret;
-    uint8_t nal_type, tiles_enabled_flag;
+    uint8_t nal_type, tiles_enabled_flag, entropy_coding_sync_enabled_flag;
     GetBitContext gbc, *gb = &gbc;
 
     ret = init_get_bits8(gb, pps_buf, pps_size);
@@ -562,15 +562,22 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
     get_se_golomb(gb); // pps_cb_qp_offset
     get_se_golomb(gb); // pps_cr_qp_offset
 
-    //fixme: hvcc
     // weighted_pred_flag               u(1)
     // weighted_bipred_flag             u(1)
     // transquant_bypass_enabled_flag   u(1)
     skip_bits(gb, 3);
 
-    tiles_enabled_flag = get_bits1(gb);
+    tiles_enabled_flag               = get_bits1(gb);
+    entropy_coding_sync_enabled_flag = get_bits1(gb);
 
-    skip_bits1(gb); // entropy_coding_sync_enabled_flag
+    if (entropy_coding_sync_enabled_flag && tiles_enabled_flag)
+        hvcc->parallelismType = 0; // mixed-type parallel decoding
+    else if (entropy_coding_sync_enabled_flag)
+        hvcc->parallelismType = 3; // wavefront-based parallel decoding
+    else if (tiles_enabled_flag)
+        hvcc->parallelismType = 2; // tile-based parallel decoding
+    else
+        hvcc->parallelismType = 1; // slice-based parallel decoding
 
     if (tiles_enabled_flag) {
         int num_tile_columns_minus1 = get_ue_golomb(gb);
