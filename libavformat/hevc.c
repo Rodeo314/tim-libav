@@ -250,8 +250,8 @@ static void hvcc_parse_vui(GetBitContext *gb,
         // restricted_ref_pic_lists_flag           u(1)
         skip_bits(gb, 3);
 
-        // in  an hvCC, min_spatial_segmentation_idc is u(12)
         min_spatial_segmentation_idc = get_ue_golomb(gb);
+        // unsigned int(12) min_spatial_segmentation_idc;
         if (min_spatial_segmentation_idc > 0 &&
             min_spatial_segmentation_idc < 4096)
             hvcc->min_spatial_segmentation_idc = min_spatial_segmentation_idc;
