@@ -40,25 +40,69 @@ static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
 {
     memset(hvcc, 0, sizeof(HEVCDecoderConfigurationRecord));
-    hvcc->configurationVersion = 1;
-    hvcc->lengthSizeMinusOne   = 3; // 4 bytes
+    hvcc->configurationVersion                = 1;
+    hvcc->lengthSizeMinusOne                  = 3;
+    hvcc->general_profile_compatibility_flags = UINT32_MAX;
+    hvcc->general_constraint_indicator_flags  = UINT64_MAX;
 }
 
 static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
                             HVCCProfileTierLevel *ptl)
 {
-    if (hvcc->general_profile_space < ptl->profile_space)
-        hvcc->general_profile_space = ptl->profile_space;
+    /*
+     * The value of general_profile_space in all the parameter sets must be
+     * identical.
+     */
+    hvcc->general_profile_space = ptl->profile_space;
 
+    /*
+     * The level indication general_level_idc must indicate a level of
+     * capability equal to or greater than the highest level indicated for the
+     * highest tier in all the parameter sets.
+     */
+    if (ptl->tier_flag == hvcc->general_tier_flag &&
+        hvcc->general_level_idc < ptl->level_idc)
+        hvcc->general_level_idc = ptl->level_idc;
+
+    /*
+     * The tier indication general_tier_flag must indicate a tier equal to or
+     * greater than the highest tier indicated in all the parameter sets.
+     *
+     * Note: see above regarding the value of level_idc.
+     */
+    if (hvcc->general_tier_flag < ptl->tier_flag) {
+        hvcc->general_tier_flag = ptl->tier_flag;
+        hvcc->general_level_idc = ptl->level_idc;
+    }
+
+    /*
+     * The profile indication general_profile_idc must indicate a profile to
+     * which the stream associated with this configuration record conforms.
+     *
+     * If the sequence parameter sets are marked with different profiles, then
+     * the stream may need examination to determine which profile, if any, the
+     * entire stream conforms to. If the entire stream is not examined, or the
+     * examination reveals that there is no profile to which the entire stream
+     * conforms, then the entire stream must be split into two or more
+     * sub-streams with separate configuration records in which these rules can
+     * be met.
+     *
+     * Note: set the profile to the highest value for the sake of simplicity.
+     */
     if (hvcc->general_profile_idc < ptl->profile_idc)
         hvcc->general_profile_idc = ptl->profile_idc;
 
-    if (hvcc->general_level_idc < ptl->level_idc)
-        hvcc->general_level_idc = ptl->level_idc;
+    /*
+     * Each bit in general_profile_compatibility_flags may only be set if all
+     * the parameter sets set that bit.
+     */
+    hvcc->general_profile_compatibility_flags &= ptl->profile_compatibility_flags;
 
-    hvcc->general_tier_flag                   |= ptl->tier_flag;
-    hvcc->general_profile_compatibility_flags |= ptl->profile_compatibility_flags;
-    hvcc->general_constraint_indicator_flags  |= ptl->constraint_indicator_flags;
+    /*
+     * Each bit in general_constraint_indicator_flags may only be set if all
+     * the parameter sets set that bit.
+     */
+    hvcc->general_constraint_indicator_flags &= ptl->constraint_indicator_flags;
 }
 
 static void hvcc_parse_ptl(GetBitContext *gb,
