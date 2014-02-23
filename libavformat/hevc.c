@@ -260,6 +260,13 @@ static void hvcc_parse_vui(GetBitContext *gb,
     }
 }
 
+static void skip_sub_layer_ordering_info(GetBitContext *gb)
+{
+    get_ue_golomb(gb); // max_dec_pic_buffering_minus1
+    get_ue_golomb(gb); // max_num_reorder_pics
+    get_ue_golomb(gb); // max_latency_increase_plus1
+}
+
 static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
@@ -292,13 +299,10 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
 
     hvcc_parse_ptl(gb, hvcc, vps_max_sub_layers_minus1);
 
-    //fixme: same code in SPS parsing function, de-duplicate
-    for (i = get_bits1(gb) ? 0 : vps_max_sub_layers_minus1;
-         i <= vps_max_sub_layers_minus1; i++) {
-        get_ue_golomb(gb); // vps_max_dec_pic_buffering_minus1[i]
-        get_ue_golomb(gb); // vps_max_num_reorder_pics[i]
-        get_ue_golomb(gb); // vps_max_latency_increase_plus1[i]
-    }
+    // vps_sub_layer_ordering_info_present_flag
+    i = get_bits1(gb) ? 0 : vps_max_sub_layers_minus1;
+    for (; i <= vps_max_sub_layers_minus1; i++)
+        skip_sub_layer_ordering_info(gb);
 
     vps_max_layer_id          = get_bits     (gb, 6);
     vps_num_layer_sets_minus1 = get_ue_golomb(gb);
@@ -467,12 +471,10 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     hvcc->bitDepthChromaMinus8        = get_ue_golomb(gb) & 0x7;
     log2_max_pic_order_cnt_lsb_minus4 = get_ue_golomb(gb);
 
-    for (i = get_bits1(gb) ? 0 : sps_max_sub_layers_minus1;
-         i <= sps_max_sub_layers_minus1; i++) {
-        get_ue_golomb(gb); // sps_max_dec_pic_buffering_minus1[i]
-        get_ue_golomb(gb); // sps_max_num_reorder_pics[i]
-        get_ue_golomb(gb); // sps_max_latency_increase_plus1[i]
-    }
+    // sps_sub_layer_ordering_info_present_flag
+    i = get_bits1(gb) ? 0 : sps_max_sub_layers_minus1;
+    for (; i <= sps_max_sub_layers_minus1; i++)
+        skip_sub_layer_ordering_info(gb);
 
     get_ue_golomb(gb); // log2_min_luma_coding_block_size_minus3
     get_ue_golomb(gb); // log2_diff_max_min_luma_coding_block_size
