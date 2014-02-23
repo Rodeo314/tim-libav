@@ -628,10 +628,9 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             /* look for vps, sps and pps */
             while (end - buf > 4) {
                 int ret;
-                uint32_t size;
                 uint8_t nal_type;
                 GetBitContext gbc, *gb = &gbc;
-                size = FFMIN(AV_RB32(buf), end - buf - 4);
+                uint32_t size = FFMIN(AV_RB32(buf), end - buf - 4);
                 buf += 4;
 
                 ret = init_get_bits8(gb, buf, size);
