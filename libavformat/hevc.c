@@ -78,6 +78,7 @@ static void hvcc_parse_ptl(GetBitContext *gb,
     general_ptl.level_idc                   = get_bits     (gb, 8);
     hvcc_update_ptl(hvcc, &general_ptl);
 
+    //fixme: max_sub_layers_minus1 is 3-bit field, this is overkill
     num_sub_layers = FFMIN(max_sub_layers_minus1, MAX_SUB_LAYERS);
 
     for (i = 0; i < num_sub_layers; i++) {
