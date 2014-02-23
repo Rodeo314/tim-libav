@@ -79,7 +79,7 @@ static void hvcc_parse_ptl(GetBitContext *gb,
     hvcc_update_ptl(hvcc, &general_ptl);
 
     num_sub_layers = FFMIN(max_sub_layers_minus1, MAX_SUB_LAYERS);
-    
+
     for (i = 0; i < num_sub_layers; i++) {
         sub_layer_profile_present_flag[i] = get_bits1(gb);
         sub_layer_level_present_flag[i]   = get_bits1(gb);
@@ -189,6 +189,81 @@ static void skip_hrd_parameters(GetBitContext *gb, int common_inf_present_flag,
             skip_sub_layer_hrd_parameters(gb, cpb_cnt_minus1,
                                           sub_pic_hrd_params_present_flag);
     }
+}
+
+static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
+                          HEVCDecoderConfigurationRecord *hvcc)
+{
+    int i, j, ret;
+    int vps_num_layer_sets_minus1, vps_num_hrd_parameters;
+    int vps_max_layer_id, vps_max_layers_minus1, vps_max_sub_layers_minus1;
+    uint8_t nal_type;
+    GetBitContext gbc, *gb = &gbc;
+
+    ret = init_get_bits8(gb, vps_buf, vps_size);
+    if (ret < 0)
+        return ret;
+
+    nal_unit_parse_header(gb, &nal_type);
+    if (nal_type != NAL_VPS)
+        return AVERROR_BUG;
+
+    // FIXME: clearly there's something here (extract_rbsp)?
+
+    // vps_video_parameter_set_id u(4)
+    // vps_reserved_three_2bits   u(2)
+    skip_bits(gb, 6);
+
+    vps_max_layers_minus1     = get_bits(gb, 6);
+    vps_max_sub_layers_minus1 = get_bits(gb, 3);
+
+    hvcc->temporalIdNested |= get_bits1(gb);
+
+    skip_bits(gb, 16); // vps_reserved_0xffff_16bits
+
+    hvcc_parse_ptl(gb, hvcc, vps_max_sub_layers_minus1);
+
+    //fixme: same code in SPS parsing function, de-duplicate
+    for (i = get_bits1(gb) ? 0 : vps_max_sub_layers_minus1;
+         i <= vps_max_sub_layers_minus1; i++) {
+        get_ue_golomb_long(gb); // vps_max_dec_pic_buffering_minus1[i]
+        get_ue_golomb_long(gb); // vps_max_num_reorder_pics[i]
+        get_ue_golomb_long(gb); // vps_max_latency_increase_plus1[i]
+    }
+
+    vps_max_layer_id          = get_bits          (gb, 6);
+    vps_num_layer_sets_minus1 = get_ue_golomb_long(gb);
+
+    for (i = 1; i <= vps_num_layer_sets_minus1; i++)
+        for (j = 0; j <= vps_max_layer_id; j++)
+            skip_bits1(gb); // layer_id_included_flag[i][j]
+
+    //fixme: hvcc
+    if (get_bits1(gb)) {        // vps_timing_info_present_flag
+        skip_bits_long(gb, 32); // vps_num_units_in_tick
+        skip_bits_long(gb, 32); // vps_time_scale
+
+        if (get_bits1(gb))          // vps_poc_proportional_to_timing_flag
+            get_ue_golomb_long(gb); // vps_num_ticks_poc_diff_one_minus1
+
+        //fixme: do we need this at all?
+        vps_num_hrd_parameters = get_ue_golomb_long(gb);
+
+        for (i = 0; i < vps_num_hrd_parameters; i++) {
+            uint8_t cprms_present_flag = 0;
+
+            get_ue_golomb_long(gb); // hrd_layer_set_idx[i]
+
+            if (i > 0)
+                cprms_present_flag = get_bits1(gb);
+
+            skip_hrd_parameters(gb, cprms_present_flag,
+                                vps_max_sub_layers_minus1);
+        }
+    }
+
+    // nothing useful for hvcC past this point
+    return 0;
 }
 
 static void hvcc_parse_vui(GetBitContext *gb,
@@ -405,7 +480,6 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     if (get_bits1(gb) && // scaling_list_enabled_flag
         get_bits1(gb))   // sps_scaling_list_data_present_flag
         skip_scaling_list_data(gb);
-            
 
     skip_bits1(gb); // amp_enabled_flag
     skip_bits1(gb); // sample_adaptive_offset_enabled_flag
@@ -441,81 +515,6 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 
     if (get_bits1(gb)) // vui_parameters_present_flag
         hvcc_parse_vui(gb, hvcc, sps_max_sub_layers_minus1);
-
-    // nothing useful for hvcC past this point
-    return 0;
-}
-
-static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
-                          HEVCDecoderConfigurationRecord *hvcc)
-{
-    int i, j, ret;
-    int vps_num_layer_sets_minus1, vps_num_hrd_parameters;
-    int vps_max_layer_id, vps_max_layers_minus1, vps_max_sub_layers_minus1;
-    uint8_t nal_type;
-    GetBitContext gbc, *gb = &gbc;
-
-    ret = init_get_bits8(gb, vps_buf, vps_size);
-    if (ret < 0)
-        return ret;
-
-    nal_unit_parse_header(gb, &nal_type);
-    if (nal_type != NAL_VPS)
-        return AVERROR_BUG;
-
-    // FIXME: clearly there's something here (extract_rbsp)?
-
-    // vps_video_parameter_set_id u(4)
-    // vps_reserved_three_2bits   u(2)
-    skip_bits(gb, 6);
-
-    vps_max_layers_minus1     = get_bits(gb, 6);
-    vps_max_sub_layers_minus1 = get_bits(gb, 3);
-
-    hvcc->temporalIdNested |= get_bits1(gb);
-
-    skip_bits(gb, 16); // vps_reserved_0xffff_16bits
-
-    hvcc_parse_ptl(gb, hvcc, vps_max_sub_layers_minus1);
-
-    //fixme: same code in SPS parsing function, de-duplicate
-    for (i = get_bits1(gb) ? 0 : vps_max_sub_layers_minus1;
-         i <= vps_max_sub_layers_minus1; i++) {
-        get_ue_golomb_long(gb); // vps_max_dec_pic_buffering_minus1[i]
-        get_ue_golomb_long(gb); // vps_max_num_reorder_pics[i]
-        get_ue_golomb_long(gb); // vps_max_latency_increase_plus1[i]
-    }
-
-    vps_max_layer_id          = get_bits          (gb, 6);
-    vps_num_layer_sets_minus1 = get_ue_golomb_long(gb);
-
-    for (i = 1; i <= vps_num_layer_sets_minus1; i++)
-        for (j = 0; j <= vps_max_layer_id; j++)
-            skip_bits1(gb); // layer_id_included_flag[i][j]
-
-    //fixme: hvcc
-    if (get_bits1(gb)) {        // vps_timing_info_present_flag
-        skip_bits_long(gb, 32); // vps_num_units_in_tick
-        skip_bits_long(gb, 32); // vps_time_scale
-
-        if (get_bits1(gb))          // vps_poc_proportional_to_timing_flag
-            get_ue_golomb_long(gb); // vps_num_ticks_poc_diff_one_minus1
-
-        //fixme: do we need this at all?
-        vps_num_hrd_parameters = get_ue_golomb_long(gb);
-
-        for (i = 0; i < vps_num_hrd_parameters; i++) {
-            uint8_t cprms_present_flag = 0;
-
-            get_ue_golomb_long(gb); // hrd_layer_set_idx[i]
-
-            if (i > 0)
-                cprms_present_flag = get_bits1(gb);
-
-            skip_hrd_parameters(gb, cprms_present_flag,
-                                vps_max_sub_layers_minus1);
-        }
-    }
 
     // nothing useful for hvcC past this point
     return 0;
