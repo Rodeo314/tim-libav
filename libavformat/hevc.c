@@ -38,48 +38,6 @@ static int binar_ize(uint8_t n)
     return ret;
 }
 
-static int extract_bit(uint8_t n, int i)
-{
-    return ((n & (1 << (i & 7))) >> (i & 7));
-}
-
-static void dump_profile_tier_level(const char *buf_name, uint8_t *buf, int index, int maxNumSubLayersMinus1)
-{
-    int i, j, k;
-    av_log(NULL, AV_LOG_FATAL, "\n%s index: %02d\n", buf_name, index);
-    av_log(NULL, AV_LOG_FATAL, "general_profile_space:                  %3d\n", (buf[index] & 0xc0) >> 6);
-    av_log(NULL, AV_LOG_FATAL, "general_tier_flag:                      %3d\n", (buf[index] & 0x20) >> 5);
-    av_log(NULL, AV_LOG_FATAL, "general_profile_idc:                    %3d\n", (buf[index] & 0x1f)     );
-    av_log(NULL, AV_LOG_FATAL, "%s index: %02d\n", buf_name, ++index);
-    for(i = 0; i < 4; i++) {
-        for(j = 0; j < 8; j++) {
-            k = i * 8;
-            av_log(NULL,
-                   AV_LOG_FATAL, "general_profile_compatibility_flag[%2d]: %3d\n", j + k, extract_bit(buf[index], j));
-        }
-        av_log(NULL, AV_LOG_FATAL, "%s index: %02d\n", buf_name, ++index);
-    }
-    av_log(NULL, AV_LOG_FATAL, "general_progressive_source_flag:        %3d\n", extract_bit(buf[index], 0));
-    av_log(NULL, AV_LOG_FATAL, "general_interlaced_source_flag:         %3d\n", extract_bit(buf[index], 1));
-    av_log(NULL, AV_LOG_FATAL, "general_non_packed_constraint_flag:     %3d\n", extract_bit(buf[index], 2));
-    av_log(NULL, AV_LOG_FATAL, "general_frame_only_constraint_flag:     %3d\n", extract_bit(buf[index], 3));
-    av_log(NULL, AV_LOG_FATAL, "general_reserved_zero_44bits[ 0]:       %3d\n", extract_bit(buf[index], 4));
-    av_log(NULL, AV_LOG_FATAL, "general_reserved_zero_44bits[ 1]:       %3d\n", extract_bit(buf[index], 5));
-    av_log(NULL, AV_LOG_FATAL, "general_reserved_zero_44bits[ 2]:       %3d\n", extract_bit(buf[index], 6));
-    av_log(NULL, AV_LOG_FATAL, "general_reserved_zero_44bits[ 3]:       %3d\n", extract_bit(buf[index], 7));
-    av_log(NULL, AV_LOG_FATAL, "%s index: %02d\n", buf_name, ++index);
-    for(i = 0; i < 5; i++) {
-        for(j = 0; j < 8; j++) {
-            k = 3 + (i * 8) + 1;
-            av_log(NULL,
-                   AV_LOG_FATAL, "general_reserved_zero_44bits[%2d]:       %3d\n", j + k, extract_bit(buf[index], j));
-        }
-        av_log(NULL, AV_LOG_FATAL, "%s index: %02d\n", buf_name, ++index);
-    }
-    av_log(NULL, AV_LOG_FATAL, "general_level_idc:                      %3d\n", buf[index]);
-    av_log(NULL, AV_LOG_FATAL, "\n");
-}
-
 static const AVRational vui_sar[] = {
     {  0,   1 },
     {  1,   1 },
@@ -598,10 +556,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                        binar_ize((pps[i] & 0x0f)));
             }
             av_log(NULL, AV_LOG_FATAL, "\n");
-
-            /* Log the contents of the vars where I think these values are */
-            dump_profile_tier_level("VPS", vps, 9, -1);
-            dump_profile_tier_level("SPS", sps, 6, -1);
 
 
             HEVCDecoderConfigurationRecord hvcc;
