@@ -65,7 +65,7 @@ static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
     hvcc->lengthSizeMinusOne   = 3; // 4 bytes
 }
 
-static void parse_nal_header(GetBitContext *gb, uint8_t *nal_type)
+static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 {
     skip_bits1(gb); // forbidden_zero_bit
 
@@ -359,7 +359,7 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     if (ret < 0)
         return ret;
 
-    parse_nal_header(&gb, &nal_type);
+    nal_unit_parse_header(&gb, &nal_type);
     if (nal_type != NAL_SPS)
         return AVERROR_INVALIDDATA;
 
@@ -480,7 +480,7 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 if (ret < 0)
                     return ret;
 
-                parse_nal_header(&gb, &nal_type);
+                nal_unit_parse_header(&gb, &nal_type);
 
                 switch (nal_type) {
                 case NAL_VPS:
