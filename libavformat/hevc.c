@@ -26,6 +26,8 @@
 #include "avio.h"
 #include "hevc.h"
 
+#define MAX_SPATIAL_SEGMENTATION 4096 // max. value of u(12) field
+
 static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 {
     skip_bits1(gb); // forbidden_zero_bit
@@ -40,10 +42,31 @@ static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
 {
     memset(hvcc, 0, sizeof(HEVCDecoderConfigurationRecord));
-    hvcc->configurationVersion                = 1;
-    hvcc->lengthSizeMinusOne                  = 3;
-    hvcc->general_profile_compatibility_flags = UINT32_MAX;
-    hvcc->general_constraint_indicator_flags  = UINT64_MAX;
+    hvcc->configurationVersion = 1;
+    hvcc->lengthSizeMinusOne   = 3; // 4 bytes
+
+    // the following fields have all their valid bits set by default
+    // the VPS/SPS/PPS parsing code will unset the bits as necessary
+    hvcc->general_profile_compatibility_flags = 0xffffffff;
+    hvcc->general_constraint_indicator_flags  = 0x0000ffffffffffff;
+
+    // initialize this field with an invalid value which can be used to detect
+    // whether we didn't see any VUI (in wich case it should be reset to zero)
+    hvcc->min_spatial_segmentation_idc = MAX_SPATIAL_SEGMENTATION + 1;
+}
+
+static void hvcc_finalize(HEVCDecoderConfigurationRecord *hvcc)
+{
+    if (hvcc->min_spatial_segmentation_idc > MAX_SPATIAL_SEGMENTATION)
+        hvcc->min_spatial_segmentation_idc = 0;
+
+    /*
+     * parallelismType indicates the type of parallelism that is used to meet
+     * the restrictions imposed by min_spatial_segmentation_idc when the value
+     * of min_spatial_segmentation_idc is greater than 0.
+     */
+    if (!hvcc->min_spatial_segmentation_idc)
+        hvcc->parallelismType = 0;
 }
 
 static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
@@ -292,9 +315,15 @@ static void hvcc_parse_vui(GetBitContext *gb,
         skip_bits(gb, 3);
 
         min_spatial_segmentation_idc = get_ue_golomb(gb);
-        // unsigned int(12) min_spatial_segmentation_idc;
-        if (min_spatial_segmentation_idc > 0 &&
-            min_spatial_segmentation_idc < 4096)
+
+        /*
+         * unsigned int(12) min_spatial_segmentation_idc;
+         *
+         * The min_spatial_segmentation_idc indication must indicate a level of
+         * spatial segmentation equal to or less than the lowest level of
+         * spatial segmentation indicated in all the parameter sets.
+         */
+        if (hvcc->min_spatial_segmentation_idc > min_spatial_segmentation_idc)
             hvcc->min_spatial_segmentation_idc = min_spatial_segmentation_idc;
 
         get_ue_golomb(gb); // max_bytes_per_pic_denom
@@ -765,25 +794,60 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             }
             av_log(NULL, AV_LOG_FATAL, "\n");
 
-            /* HEVCDecoderConfigurationRecord */
-            avio_w8  (pb, hvcc.configurationVersion);
-            avio_w8  (pb, hvcc.general_profile_space << 6 |
-                          hvcc.general_tier_flag     << 5 |
-                          hvcc.general_profile_idc);
+            hvcc_finalize(&hvcc);
+
+            // unsigned int(8) configurationVersion = 1;
+            avio_w8(pb, hvcc.configurationVersion);
+
+            // unsigned int(2) general_profile_space;
+            // unsigned int(1) general_tier_flag;
+            // unsigned int(5) general_profile_idc;
+            avio_w8(pb, hvcc.general_profile_space << 6 |
+                        hvcc.general_tier_flag     << 5 |
+                        hvcc.general_profile_idc);
+
+            // unsigned int(32) general_profile_compatibility_flags;
             avio_wb32(pb, hvcc.general_profile_compatibility_flags);
+
+            // unsigned int(48) general_constraint_indicator_flags;
             avio_wb32(pb, hvcc.general_constraint_indicator_flags >> 16);
             avio_wb16(pb, hvcc.general_constraint_indicator_flags);
-            avio_w8  (pb, hvcc.general_level_idc);
+
+            // unsigned int(8) general_level_idc;
+            avio_w8(pb, hvcc.general_level_idc);
+
+            // bit(4) reserved = ‘1111’b;
+            // unsigned int(12) min_spatial_segmentation_idc;
             avio_wb16(pb, hvcc.min_spatial_segmentation_idc | 0xf000);
-            avio_w8  (pb, hvcc.parallelismType              | 0xfc);
-            avio_w8  (pb, hvcc.chromaFormat                 | 0xfc);
-            avio_w8  (pb, hvcc.bitDepthLumaMinus8           | 0xf8);
-            avio_w8  (pb, hvcc.bitDepthChromaMinus8         | 0xf8);
+
+            // bit(6) reserved = ‘111111’b;
+            // unsigned int(2) parallelismType;
+            avio_w8(pb, hvcc.parallelismType | 0xfc);
+
+            // bit(6) reserved = ‘111111’b;
+            // unsigned int(2) chromaFormat;
+            avio_w8(pb, hvcc.chromaFormat | 0xfc);
+
+            // bit(5) reserved = ‘11111’b;
+            // unsigned int(3) bitDepthLumaMinus8;
+            avio_w8(pb, hvcc.bitDepthLumaMinus8 | 0xf8);
+
+            // bit(5) reserved = ‘11111’b;
+            // unsigned int(3) bitDepthChromaMinus8;
+            avio_w8(pb, hvcc.bitDepthChromaMinus8 | 0xf8);
+
+            // bit(16) avgFrameRate;
             avio_wb16(pb, hvcc.avgFrameRate);
-            avio_w8  (pb, hvcc.constantFrameRate << 6 |
-                          hvcc.numTemporalLayers << 3 |
-                          hvcc.temporalIdNested  << 2 |
-                          hvcc.lengthSizeMinusOne);
+
+            // bit(2) constantFrameRate;
+            // bit(3) numTemporalLayers;
+            // bit(1) temporalIdNested;
+            // unsigned int(2) lengthSizeMinusOne;
+            avio_w8(pb, hvcc.constantFrameRate << 6 |
+                        hvcc.numTemporalLayers << 3 |
+                        hvcc.temporalIdNested  << 2 |
+                        hvcc.lengthSizeMinusOne);
+
             /*
              * HEVCDecoderConfigurationRecord: continued
              *
