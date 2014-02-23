@@ -445,12 +445,9 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 
     if (get_bits1(&gb)) {                               // long_term_ref_pics_present_flag
         for (i = 0; i < get_ue_golomb_long(&gb); i++) { // num_long_term_ref_pics_sps
-            int len = log2_max_pic_order_cnt_lsb_minus4 + 4;
-            while (len > 0) { // lt_ref_pic_poc_lsb_sps[i]
-                skip_bits(&gb, FFMIN(25, len));
-                len -= 25;
-            }
-            skip_bits1(&gb); // used_by_curr_pic_lt_sps_flag[i]
+            int len = FFMIN(log2_max_pic_order_cnt_lsb_minus4 + 4, 16);
+            skip_bits (&gb, len); // lt_ref_pic_poc_lsb_sps[i]
+            skip_bits1(&gb);      // used_by_curr_pic_lt_sps_flag[i]
         }
     }
 
