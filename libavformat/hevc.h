@@ -24,6 +24,17 @@
 #include <stdint.h>
 #include "avio.h"
 
+#define HEVC_DEBUG_LOG(str, ...) av_log(NULL, AV_LOG_FATAL, "%s, %s: %d - " str, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+
+static av_unused int binar_ize(uint8_t n)
+{
+    int i, ret = 0;
+    for (i = 0; i < 8; i++)
+        if (n & (1 << i))
+            ret += (int)pow(10, i);
+    return ret;
+}
+
 typedef struct HEVCDecoderConfigurationRecord {
     uint8_t  configurationVersion;
     uint8_t  general_profile_space;

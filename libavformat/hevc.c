@@ -26,53 +26,22 @@
 #include "avio.h"
 #include "hevc.h"
 
-#define HEVC_DEBUG_LOG(str, ...) av_log(NULL, AV_LOG_FATAL, "%s, %s: %d - " str, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
-
-static int binar_ize(uint8_t n)
-{
-    int i, ret = 0;
-    for (i = 0; i < 8; i++) {
-        if (n & (1 << i))
-            ret += (int)pow(10, i);
-    }
-    return ret;
-}
-
-static const AVRational vui_sar[] = {
-    {  0,   1 },
-    {  1,   1 },
-    { 12,  11 },
-    { 10,  11 },
-    { 16,  11 },
-    { 40,  33 },
-    { 24,  11 },
-    { 20,  11 },
-    { 32,  11 },
-    { 80,  33 },
-    { 18,  11 },
-    { 15,  11 },
-    { 64,  33 },
-    { 160, 99 },
-    {  4,   3 },
-    {  3,   2 },
-    {  2,   1 },
-};
-
-static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
-{
-    memset(hvcc, 0, sizeof(HEVCDecoderConfigurationRecord));
-    hvcc->configurationVersion = 1;
-    hvcc->lengthSizeMinusOne   = 3; // 4 bytes
-}
-
 static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 {
     skip_bits1(gb); // forbidden_zero_bit
 
     *nal_type = get_bits(gb, 6);
 
-    skip_bits(gb, 6); // nuh_layer_id
-    skip_bits(gb, 3); // nuh_temporal_id_plus1
+    // nuh_layer_id          u(6)
+    // nuh_temporal_id_plus1 u(3)
+    skip_bits(gb, 9);
+}
+
+static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
+{
+    memset(hvcc, 0, sizeof(HEVCDecoderConfigurationRecord));
+    hvcc->configurationVersion = 1;
+    hvcc->lengthSizeMinusOne   = 3; // 4 bytes
 }
 
 static void hvcc_parse_ptl(GetBitContext *gb,
