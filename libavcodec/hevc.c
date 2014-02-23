@@ -447,12 +447,20 @@ static int set_sps(HEVCContext *s, const HEVCSPS *sps)
                "vps_num_units_in_tick: %d - vps_time_scale: %d - vps_poc_proportional_to_timing_flag: %d\n",
                s->vps->vps_num_units_in_tick, s->vps->vps_time_scale,
                s->vps->vps_poc_proportional_to_timing_flag);
+    if (s->vps->vps_poc_proportional_to_timing_flag)
+        av_log(s->avctx, AV_LOG_ERROR,
+               "vps_num_ticks_poc_diff_one_minus1: %d\n",
+               s->vps->vps_num_ticks_poc_diff_one - 1);
 
     if (sps->vui.vui_timing_info_present_flag)
         av_log(s->avctx, AV_LOG_ERROR,
                "vui_num_units_in_tick: %d - vui_time_scale: %d - vui_poc_proportional_to_timing_flag: %d\n",
                sps->vui.vui_num_units_in_tick, sps->vui.vui_time_scale,
                sps->vui.vui_poc_proportional_to_timing_flag);
+    if (sps->vui.vui_poc_proportional_to_timing_flag)
+        av_log(s->avctx, AV_LOG_ERROR,
+               "vui_num_ticks_poc_diff_one_minus1: %d\n",
+               sps->vui.vui_num_ticks_poc_diff_one_minus1);
 
     if (num != 0 && den != 0)
         av_reduce(&s->avctx->time_base.num, &s->avctx->time_base.den,
