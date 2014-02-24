@@ -390,28 +390,13 @@ static void skip_hrd_parameters(GetBitContext *gb, int common_inf_present_flag,
     }
 }
 
-static void hvcc_parse_timing_info(GetBitContext *gb,
-                                   HEVCDecoderConfigurationRecord *hvcc)
+static void skip_timing_info(GetBitContext *gb)
 {
-    uint8_t poc_proportional_to_timing_flag;
-    uint32_t num_ticks_poc_diff_one, num_units_in_tick, time_scale;
+    skip_bits_long(gb, 32); // num_units_in_tick
+    skip_bits_long(gb, 32); // time_scale
 
-    num_units_in_tick               = get_bits_long(gb, 32);
-    time_scale                      = get_bits_long(gb, 32);
-    poc_proportional_to_timing_flag = get_bits1    (gb);
-
-    if (poc_proportional_to_timing_flag)
-        num_ticks_poc_diff_one = get_ue_golomb_long(gb) + 1;
-
-    /*
-     * XXX: this is only a guess.
-     */
-    if (poc_proportional_to_timing_flag) {
-        hvcc->constantFrameRate = 1;
-        hvcc->avgFrameRate      = (((uint64_t)time_scale * 256) /
-                                   ((uint64_t)num_units_in_tick *
-                                    num_ticks_poc_diff_one));
-    }
+    if (get_bits1(gb))          // poc_proportional_to_timing_flag
+        get_ue_golomb_long(gb); // num_ticks_poc_diff_one_minus1
 }
 
 static void hvcc_parse_vui(GetBitContext *gb,
@@ -455,7 +440,7 @@ static void hvcc_parse_vui(GetBitContext *gb,
     }
 
     if (get_bits1(gb)) { // vui_timing_info_present_flag
-        hvcc_parse_timing_info(gb, hvcc);
+        skip_timing_info(gb);
 
         if (get_bits1(gb)) // vui_hrd_parameters_present_flag
             skip_hrd_parameters(gb, 1, max_sub_layers_minus1);
@@ -496,9 +481,7 @@ static void skip_sub_layer_ordering_info(GetBitContext *gb)
 static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i, j, ret;
-    int vps_num_layer_sets_minus1, vps_num_hrd_parameters;
-    int vps_max_layer_id, vps_max_layers_minus1, vps_max_sub_layers_minus1;
+    int ret, vps_max_sub_layers_minus1;
     uint8_t nal_type;
     GetBitContext gbc, *gb = &gbc;
 
@@ -510,13 +493,11 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
     if (nal_type != NAL_VPS)
         return AVERROR_BUG;
 
-    // FIXME: clearly there's something here (extract_rbsp)?
-
     // vps_video_parameter_set_id u(4)
     // vps_reserved_three_2bits   u(2)
-    skip_bits(gb, 6);
+    // vps_max_layers_minus1      u(6)
+    skip_bits(gb, 12);
 
-    vps_max_layers_minus1     = get_bits(gb, 6);
     vps_max_sub_layers_minus1 = get_bits(gb, 3);
 
     /*
@@ -535,37 +516,6 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
     skip_bits(gb, 16); // vps_reserved_0xffff_16bits
 
     hvcc_parse_ptl(gb, hvcc, vps_max_sub_layers_minus1);
-
-    // vps_sub_layer_ordering_info_present_flag
-    i = get_bits1(gb) ? 0 : vps_max_sub_layers_minus1;
-    for (; i <= vps_max_sub_layers_minus1; i++)
-        skip_sub_layer_ordering_info(gb);
-
-    vps_max_layer_id          = get_bits     (gb, 6);
-    vps_num_layer_sets_minus1 = get_ue_golomb(gb);
-
-    for (i = 1; i <= vps_num_layer_sets_minus1; i++)
-        for (j = 0; j <= vps_max_layer_id; j++)
-            skip_bits1(gb); // layer_id_included_flag[i][j]
-
-    if (get_bits1(gb)) { // vps_timing_info_present_flag
-        hvcc_parse_timing_info(gb, hvcc);
-
-        // FIXME: do we need this at all?
-        vps_num_hrd_parameters = get_ue_golomb(gb);
-
-        for (i = 0; i < vps_num_hrd_parameters; i++) {
-            uint8_t cprms_present_flag = 0;
-
-            get_ue_golomb(gb); // hrd_layer_set_idx[i]
-
-            if (i > 0)
-                cprms_present_flag = get_bits1(gb);
-
-            skip_hrd_parameters(gb, cprms_present_flag,
-                                vps_max_sub_layers_minus1);
-        }
-    }
 
     // nothing useful for hvcC past this point
     return 0;
@@ -656,9 +606,7 @@ static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
 static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i, ret;
-    int log2_max_pic_order_cnt_lsb_minus4;
-    int chroma_format_idc, sps_max_sub_layers_minus1;
+    int i, ret, log2_max_pic_order_cnt_lsb_minus4, sps_max_sub_layers_minus1;
     int num_short_term_ref_pic_sets, num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT];
     uint8_t nal_type;
     GetBitContext gbc, *gb = &gbc;
@@ -670,8 +618,6 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     nal_unit_parse_header(gb, &nal_type);
     if (nal_type != NAL_SPS)
         return AVERROR_BUG;
-
-    // FIXME: clearly there's something here (extract_rbsp)?
 
     skip_bits(gb, 4); // sps_video_parameter_set_id
 
@@ -694,10 +640,9 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 
     get_ue_golomb(gb); // sps_seq_parameter_set_id
 
-    chroma_format_idc  = get_ue_golomb(gb);
-    hvcc->chromaFormat = chroma_format_idc & 0x3;
+    hvcc->chromaFormat = get_ue_golomb(gb);
 
-    if (chroma_format_idc == 3)
+    if (hvcc->chromaFormat == 3)
         skip_bits1(gb); // separate_colour_plane_flag
 
     get_ue_golomb(gb); // pic_width_in_luma_samples
@@ -710,8 +655,8 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
         get_ue_golomb(gb); // conf_win_bottom_offset
     }
 
-    hvcc->bitDepthLumaMinus8          = get_ue_golomb(gb) & 0x7;
-    hvcc->bitDepthChromaMinus8        = get_ue_golomb(gb) & 0x7;
+    hvcc->bitDepthLumaMinus8          = get_ue_golomb(gb);
+    hvcc->bitDepthChromaMinus8        = get_ue_golomb(gb);
     log2_max_pic_order_cnt_lsb_minus4 = get_ue_golomb(gb);
 
     // sps_sub_layer_ordering_info_present_flag
@@ -772,7 +717,7 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i, ret;
+    int ret;
     uint8_t nal_type, tiles_enabled_flag, entropy_coding_sync_enabled_flag;
     GetBitContext gbc, *gb = &gbc;
 
@@ -783,8 +728,6 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
     nal_unit_parse_header(gb, &nal_type);
     if (nal_type != NAL_PPS)
         return AVERROR_BUG;
-
-    // FIXME: clearly there's something here (extract_rbsp)?
 
     get_ue_golomb(gb); // pps_pic_parameter_set_id
     get_ue_golomb(gb); // pps_seq_parameter_set_id
@@ -827,40 +770,6 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
         hvcc->parallelismType = 2; // tile-based parallel decoding
     else
         hvcc->parallelismType = 1; // slice-based parallel decoding
-
-    if (tiles_enabled_flag) {
-        int num_tile_columns_minus1 = get_ue_golomb(gb);
-        int num_tile_rows_minus1    = get_ue_golomb(gb);
-        if (!get_bits1(gb)) { // uniform_spacing_flag
-            for (i = 0; i < num_tile_columns_minus1; i++)
-                get_ue_golomb(gb); // column_width_minus1[i]
-
-            for (i = 0; i < num_tile_rows_minus1; i++)
-                get_ue_golomb(gb); // row_height_minus1[i]
-
-            skip_bits1(gb); // loop_filter_across_tiles_enabled_flag
-        }
-    }
-
-    skip_bits1(gb); // pps_loop_filter_across_slices_enabled_flag
-
-    if (get_bits1(gb)) { // deblocking_filter_control_present_flag
-        skip_bits1(gb);  // deblocking_filter_override_enabled_flag
-
-        if (!get_bits1(gb)) {  // pps_deblocking_filter_disabled_flag
-            get_se_golomb(gb); // pps_beta_offset_div2
-            get_se_golomb(gb); // pps_tc_offset_div2
-        }
-    }
-
-    if (get_bits1(gb)) // pps_scaling_list_data_present_flag
-        skip_scaling_list_data(gb);
-
-    skip_bits1(gb); // lists_modification_present_flag
-
-    get_ue_golomb(gb); // log2_parallel_merge_level_minus2
-
-    skip_bits1(gb); // slice_segment_header_extension_present_flag
 
     // nothing useful for hvcC past this point
     return 0;
