@@ -252,6 +252,22 @@ static void skip_hrd_parameters(GetBitContext *gb, int common_inf_present_flag,
     }
 }
 
+static void hvcc_parse_timing_info(GetBitContext *gb,
+                                   HEVCDecoderConfigurationRecord *hvcc)
+{
+    uint8_t  poc_proportional_to_timing_flag;
+    uint32_t num_ticks_poc_diff_one_minus1, num_units_in_tick, time_scale;
+
+    num_units_in_tick               = get_bits_long(gb, 32);
+    time_scale                      = get_bits_long(gb, 32);
+    poc_proportional_to_timing_flag = get_bits1    (gb);
+
+    if (poc_proportional_to_timing_flag)
+        num_ticks_poc_diff_one_minus1 = get_ue_golomb_long(gb);
+
+    //fixme: hvcc
+}
+
 static void hvcc_parse_vui(GetBitContext *gb,
                            HEVCDecoderConfigurationRecord *hvcc,
                            int max_sub_layers_minus1)
@@ -292,13 +308,8 @@ static void hvcc_parse_vui(GetBitContext *gb,
         get_ue_golomb(gb); // def_disp_win_bottom_offset
     }
 
-    //fixme: hvcc
-    if (get_bits1(gb)) {        // vui_timing_info_present_flag
-        skip_bits_long(gb, 32); // vui_num_units_in_tick
-        skip_bits_long(gb, 32); // vui_time_scale
-
-        if (get_bits1(gb))     // vui_poc_proportional_to_timing_flag
-            get_ue_golomb(gb); // vui_num_ticks_poc_diff_one_minus1
+    if (get_bits1(gb)) { // vui_timing_info_present_flag
+        hvcc_parse_timing_info(gb, hvcc);
 
         if (get_bits1(gb)) // vui_hrd_parameters_present_flag
             skip_hrd_parameters(gb, 1, max_sub_layers_minus1);
@@ -391,13 +402,8 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
         for (j = 0; j <= vps_max_layer_id; j++)
             skip_bits1(gb); // layer_id_included_flag[i][j]
 
-    //fixme: hvcc
-    if (get_bits1(gb)) {        // vps_timing_info_present_flag
-        skip_bits_long(gb, 32); // vps_num_units_in_tick
-        skip_bits_long(gb, 32); // vps_time_scale
-
-        if (get_bits1(gb))     // vps_poc_proportional_to_timing_flag
-            get_ue_golomb(gb); // vps_num_ticks_poc_diff_one_minus1
+    if (get_bits1(gb)) { // vps_timing_info_present_flag
+        hvcc_parse_timing_info(gb, hvcc);
 
         // FIXME: do we need this at all?
         vps_num_hrd_parameters = get_ue_golomb(gb);
