@@ -98,6 +98,41 @@ static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
 
+static int nal_unit_extract_rbsp(const uint8_t *src, int src_len, uint8_t **dst,
+                                 int *dst_len)
+{
+    int i, len;
+    uint8_t *buf;
+
+    if (!dst)
+        return AVERROR_BUG;
+
+    av_fast_malloc(dst, dst_len, src_len);
+    buf = *dst;
+    if (!buf)
+        return AVERROR(ENOMEM);
+
+    // always copy the header (2 bytes)
+    i = len = 0;
+    while (i < 2 && i < src_len)
+        buf[len++] = src[i++];
+
+    while (i + 2 < src_len)
+        if (!src[i] && !src[i + 1] && src[i + 2] == 3) {
+            buf[len++] = src[i++];
+            buf[len++] = src[i++];
+            i++; // remove emulation_prevention_three_byte
+        } else
+            buf[len++] = src[i++];
+
+    while (i < src_len)
+        buf[len++] = src[i++];
+
+    *dst     = buf;
+    *dst_len = len;
+    return i - len;
+}
+
 static void dump_nal_full(uint8_t *buf, int size, const char *name)
 {
     av_log(NULL, AV_LOG_FATAL, "\n");
@@ -112,17 +147,21 @@ static void dump_nal_full(uint8_t *buf, int size, const char *name)
 
 static void dump_nal_rbsp(uint8_t *buf, int size, const char *name)
 {
-    HEVCNAL nal_buf = { 0 }, *nal = &nal_buf;
+    uint8_t *tmp = NULL;
+    int tmp_size = 0;
 
-    if (extract_rbsp(buf, size, nal) < 0)
+    if (nal_unit_extract_rbsp((const uint8_t*)buf, size, &tmp, &tmp_size) < 0)
         return;
 
+    buf  = tmp;
+    size = tmp_size;
+
     av_log(NULL, AV_LOG_FATAL, "\n");
-    for (int i = 0; i < nal->size; i++) {
+    for (int i = 0; i < size; i++) {
         av_log(NULL, AV_LOG_FATAL, "%s[%2d]: %3d, 0x%02x, %04d %04d\n", name,
-               i, nal->data[i], nal->data[i],
-               binar_ize((nal->data[i] & 0xf0) >> 4),
-               binar_ize((nal->data[i] & 0x0f)));
+               i, buf[i], buf[i],
+               binar_ize((buf[i] & 0xf0) >> 4),
+               binar_ize((buf[i] & 0x0f)));
     }
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
