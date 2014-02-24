@@ -24,8 +24,6 @@
 #include <stdint.h>
 #include "avio.h"
 
-#define HEVC_DEBUG_LOG(str, ...) av_log(NULL, AV_LOG_FATAL, "%s, %s: %d - " str, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
-
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len);
 
 #endif /* AVFORMAT_HEVC_H */

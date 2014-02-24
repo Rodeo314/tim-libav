@@ -66,6 +66,7 @@ static int binar_ize(uint8_t n)
     return ret;
 }
 
+#define HEVC_DEBUG_LOG(str, ...) av_log(NULL, AV_LOG_FATAL, "%s, %s: %d - " str, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
 static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
 {
     int i;
@@ -94,6 +95,35 @@ static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
     av_log(NULL, AV_LOG_FATAL, "hvcc: numTemporalLayers:                   %4"PRIu8"\n",  hvcc->numTemporalLayers);
     av_log(NULL, AV_LOG_FATAL, "hvcc: temporalIdNested:                    %4"PRIu8"\n",  hvcc->temporalIdNested);
     av_log(NULL, AV_LOG_FATAL, "hvcc: lengthSizeMinusOne:                  %4"PRIu8"\n",  hvcc->lengthSizeMinusOne);
+    av_log(NULL, AV_LOG_FATAL, "\n");
+}
+
+static void dump_nal_full(uint8_t *buf, int size, const char *name)
+{
+    av_log(NULL, AV_LOG_FATAL, "\n");
+    for (int i = 0; i < size; i++) {
+        av_log(NULL, AV_LOG_FATAL, "%s[%2d]: %3d, 0x%02x, %04d %04d\n", name,
+               i, buf[i], buf[i],
+               binar_ize((buf[i] & 0xf0) >> 4),
+               binar_ize((buf[i] & 0x0f)));
+    }
+    av_log(NULL, AV_LOG_FATAL, "\n");
+}
+
+static void dump_nal_rbsp(uint8_t *buf, int size, const char *name)
+{
+    HEVCNAL nal_buf = { 0 }, *nal = &nal_buf;
+
+    if (extract_rbsp(buf, size, nal) < 0)
+        return;
+
+    av_log(NULL, AV_LOG_FATAL, "\n");
+    for (int i = 0; i < nal->size; i++) {
+        av_log(NULL, AV_LOG_FATAL, "%s[%2d]: %3d, 0x%02x, %04d %04d\n", name,
+               i, nal->data[i], nal->data[i],
+               binar_ize((nal->data[i] & 0xf0) >> 4),
+               binar_ize((nal->data[i] & 0x0f)));
+    }
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
 
@@ -833,6 +863,8 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 
                 switch (nal_type) {
                 case NAL_VPS:
+                    dump_nal_full(buf, size, "vps");
+                    dump_nal_rbsp(buf, size, "VPS");
                     vps      = buf;
                     vps_size = size;
                     ret      = hvcc_parse_vps(buf, size, &hvcc);
@@ -840,6 +872,8 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                         return ret;
                     break;
                 case NAL_SPS:
+                    dump_nal_full(buf, size, "sps");
+                    dump_nal_rbsp(buf, size, "SPS");
                     sps      = buf;
                     sps_size = size;
                     ret      = hvcc_parse_sps(buf, size, &hvcc);
@@ -847,6 +881,8 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                         return ret;
                     break;
                 case NAL_PPS:
+                    dump_nal_full(buf, size, "pps");
+                    dump_nal_rbsp(buf, size, "PPS");
                     pps      = buf;
                     pps_size = size;
                     ret      = hvcc_parse_pps(buf, size, &hvcc);
@@ -866,34 +902,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 !pps || pps_size > UINT16_MAX) {
                 return AVERROR_INVALIDDATA;
             }
-            av_log(NULL, AV_LOG_FATAL, "\n");
-            HEVC_DEBUG_LOG("VPS with size: %d\n", vps_size);
-            HEVC_DEBUG_LOG("SPS with size: %d\n", sps_size);
-            HEVC_DEBUG_LOG("PPS with size: %d\n", pps_size);
-
-            /* Log the NAL unit's contents once we get here */
-            av_log(NULL, AV_LOG_FATAL, "\n");
-            for (int i = 0; i < vps_size; i++) {
-                av_log(NULL, AV_LOG_FATAL, "vps[%2d]: %3d, 0x%02x, %04d %04d\n",
-                       i, vps[i], vps[i],
-                       binar_ize((vps[i] & 0xf0) >> 4),
-                       binar_ize((vps[i] & 0x0f)));
-            }
-            av_log(NULL, AV_LOG_FATAL, "\n");
-            for (int i = 0; i < sps_size; i++) {
-                av_log(NULL, AV_LOG_FATAL, "sps[%2d]: %3d, 0x%02x, %04d %04d\n",
-                       i, sps[i], sps[i],
-                       binar_ize((sps[i] & 0xf0) >> 4),
-                       binar_ize((sps[i] & 0x0f)));
-            }
-            av_log(NULL, AV_LOG_FATAL, "\n");
-            for (int i = 0; i < pps_size; i++) {
-                av_log(NULL, AV_LOG_FATAL, "pps[%2d]: %3d, 0x%02x, %04d %04d\n",
-                       i, pps[i], pps[i],
-                       binar_ize((pps[i] & 0xf0) >> 4),
-                       binar_ize((pps[i] & 0x0f)));
-            }
-            av_log(NULL, AV_LOG_FATAL, "\n");
 
             hvcc_finalize(&hvcc);
             dump_hvcc    (&hvcc);

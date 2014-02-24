@@ -709,6 +709,8 @@ typedef struct HEVCNAL {
     const uint8_t *data;
 } HEVCNAL;
 
+int extract_rbsp(const uint8_t *src, int length, HEVCNAL *nal);
+
 struct HEVCContext;
 
 typedef struct HEVCPredContext {

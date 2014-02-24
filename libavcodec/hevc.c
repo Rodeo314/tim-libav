@@ -2670,8 +2670,7 @@ fail:
 
 /* FIXME: This is adapted from ff_h264_decode_nal, avoiding duplication
  * between these functions would be nice. */
-static int extract_rbsp(const uint8_t *src, int length,
-                        HEVCNAL *nal)
+int extract_rbsp(const uint8_t *src, int length, HEVCNAL *nal)
 {
     int i, si, di;
     uint8_t *dst;
