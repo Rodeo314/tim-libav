@@ -255,7 +255,7 @@ static void skip_hrd_parameters(GetBitContext *gb, int common_inf_present_flag,
 static void hvcc_parse_timing_info(GetBitContext *gb,
                                    HEVCDecoderConfigurationRecord *hvcc)
 {
-    uint8_t  poc_proportional_to_timing_flag;
+    uint8_t poc_proportional_to_timing_flag;
     uint32_t num_ticks_poc_diff_one_minus1, num_units_in_tick, time_scale;
 
     num_units_in_tick               = get_bits_long(gb, 32);
