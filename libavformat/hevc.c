@@ -481,11 +481,16 @@ static void skip_sub_layer_ordering_info(GetBitContext *gb)
 static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int ret, vps_max_sub_layers_minus1;
-    uint8_t nal_type;
+    int vps_max_sub_layers_minus1;
+    int ret, nal_size = 0;
+    uint8_t nal_type, *nal_buf = NULL;
     GetBitContext gbc, *gb = &gbc;
 
-    ret = init_get_bits8(gb, vps_buf, vps_size);
+    ret = nal_unit_extract_rbsp(vps_buf, vps_size, &nal_buf, &nal_size);
+    if (ret < 0)
+        return ret;
+
+    ret = init_get_bits8(gb, nal_buf, nal_size);
     if (ret < 0)
         return ret;
 
@@ -606,12 +611,17 @@ static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
 static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i, ret, log2_max_pic_order_cnt_lsb_minus4, sps_max_sub_layers_minus1;
+    int sps_max_sub_layers_minus1, log2_max_pic_order_cnt_lsb_minus4;
     int num_short_term_ref_pic_sets, num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT];
-    uint8_t nal_type;
+    int i, ret, nal_size = 0;
+    uint8_t nal_type, *nal_buf = NULL;
     GetBitContext gbc, *gb = &gbc;
 
-    ret = init_get_bits8(gb, sps_buf, sps_size);
+    ret = nal_unit_extract_rbsp(sps_buf, sps_size, &nal_buf, &nal_size);
+    if (ret < 0)
+        return ret;
+
+    ret = init_get_bits8(gb, nal_buf, nal_size);
     if (ret < 0)
         return ret;
 
@@ -717,11 +727,16 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
 static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int ret;
-    uint8_t nal_type, tiles_enabled_flag, entropy_coding_sync_enabled_flag;
+    uint8_t tiles_enabled_flag, entropy_coding_sync_enabled_flag;
+    uint8_t nal_type, *nal_buf = NULL;
+    int ret, nal_size = 0;
     GetBitContext gbc, *gb = &gbc;
 
-    ret = init_get_bits8(gb, pps_buf, pps_size);
+    ret = nal_unit_extract_rbsp(pps_buf, pps_size, &nal_buf, &nal_size);
+    if (ret < 0)
+        return ret;
+
+    ret = init_get_bits8(gb, nal_buf, nal_size);
     if (ret < 0)
         return ret;
 
