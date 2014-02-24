@@ -285,16 +285,24 @@ static void hvcc_parse_timing_info(GetBitContext *gb,
                                    HEVCDecoderConfigurationRecord *hvcc)
 {
     uint8_t poc_proportional_to_timing_flag;
-    uint32_t num_ticks_poc_diff_one_minus1, num_units_in_tick, time_scale;
+    uint32_t num_ticks_poc_diff_one, num_units_in_tick, time_scale;
 
     num_units_in_tick               = get_bits_long(gb, 32);
     time_scale                      = get_bits_long(gb, 32);
     poc_proportional_to_timing_flag = get_bits1    (gb);
 
     if (poc_proportional_to_timing_flag)
-        num_ticks_poc_diff_one_minus1 = get_ue_golomb_long(gb);
+        num_ticks_poc_diff_one = get_ue_golomb_long(gb) + 1;
 
-    //fixme: hvcc
+    /*
+     * XXX: this is only a guess.
+     */
+    if (poc_proportional_to_timing_flag) {
+        hvcc->constantFrameRate = 1;
+        hvcc->avgFrameRate      = (((uint64_t)time_scale * 256) /
+                                   ((uint64_t)num_units_in_tick *
+                                    num_ticks_poc_diff_one));
+    }
 }
 
 static void hvcc_parse_vui(GetBitContext *gb,
