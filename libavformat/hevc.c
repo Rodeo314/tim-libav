@@ -57,6 +57,46 @@ typedef struct HVCCProfileTierLevel {
     uint8_t  level_idc;
 } HVCCProfileTierLevel;
 
+static int binar_ize(uint8_t n)
+{
+    int i, ret = 0;
+    for (i = 0; i < 8; i++)
+        if (n & (1 << i))
+            ret += (int)pow(10, i);
+    return ret;
+}
+
+static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
+{
+    int i;
+    av_log(NULL, AV_LOG_FATAL, "\n");
+    av_log(NULL, AV_LOG_FATAL, "hvcc: configurationVersion:                %4"PRIu8"\n",  hvcc->configurationVersion);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_space:               %4"PRIu8"\n",  hvcc->general_profile_space);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_tier_flag:                   %4"PRIu8"\n",  hvcc->general_tier_flag);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_idc:                 %4"PRIu8"\n",  hvcc->general_profile_idc);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_compatibility_flags:");
+    for (i = 0; i < 4; i++) {
+        av_log(NULL, AV_LOG_FATAL, " %04d %04d",
+               binar_ize((((uint8_t*)&hvcc->general_profile_compatibility_flags)[i] & 0xf0) >> 4),
+               binar_ize((((uint8_t*)&hvcc->general_profile_compatibility_flags)[i] & 0x0f) >> 0));
+    }
+    av_log(NULL, AV_LOG_FATAL, "\n");
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_constraint_indicator_flags:  %04d\n",
+           binar_ize((((uint8_t*)&hvcc->general_constraint_indicator_flags)[2] & 0xf0) >> 4));
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_level_idc:                   %4"PRIu8"\n",  hvcc->general_level_idc);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: min_spatial_segmentation_idc:        %4"PRIu16"\n", hvcc->min_spatial_segmentation_idc);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: parallelismType:                     %4"PRIu8"\n",  hvcc->parallelismType);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: chromaFormat:                        %4"PRIu8"\n",  hvcc->chromaFormat);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: bitDepthLumaMinus8:                  %4"PRIu8"\n",  hvcc->bitDepthLumaMinus8);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: bitDepthChromaMinus8:                %4"PRIu8"\n",  hvcc->bitDepthChromaMinus8);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: avgFrameRate:                        %4"PRIu16"\n", hvcc->avgFrameRate);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: constantFrameRate:                   %4"PRIu8"\n",  hvcc->constantFrameRate);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: numTemporalLayers:                   %4"PRIu8"\n",  hvcc->numTemporalLayers);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: temporalIdNested:                    %4"PRIu8"\n",  hvcc->temporalIdNested);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: lengthSizeMinusOne:                  %4"PRIu8"\n",  hvcc->lengthSizeMinusOne);
+    av_log(NULL, AV_LOG_FATAL, "\n");
+}
+
 static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 {
     skip_bits1(gb); // forbidden_zero_bit
@@ -820,13 +860,13 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 
                 buf += size;
             }
-            av_log(NULL, AV_LOG_FATAL, "\n");
 
             if (!vps || vps_size > UINT16_MAX ||
                 !sps || sps_size > UINT16_MAX ||
                 !pps || pps_size > UINT16_MAX) {
                 return AVERROR_INVALIDDATA;
             }
+            av_log(NULL, AV_LOG_FATAL, "\n");
             HEVC_DEBUG_LOG("VPS with size: %d\n", vps_size);
             HEVC_DEBUG_LOG("SPS with size: %d\n", sps_size);
             HEVC_DEBUG_LOG("PPS with size: %d\n", pps_size);
@@ -856,6 +896,7 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             av_log(NULL, AV_LOG_FATAL, "\n");
 
             hvcc_finalize(&hvcc);
+            dump_hvcc    (&hvcc);
 
             // unsigned int(8) configurationVersion = 1;
             avio_w8(pb, hvcc.configurationVersion);
