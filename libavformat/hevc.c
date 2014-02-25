@@ -739,6 +739,11 @@ static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
 
     nal_unit_parse_header(&gbc, &nal_type);
 
+    /*
+     * Note: only 'declarative' SEI messages are allowed in
+     * hvcC. Perhaps the SEI playload type should be checked
+     * and non-declarative SEI messages discarded?
+     */
     switch (nal_type) {
     case NAL_VPS:
     case NAL_SPS:
