@@ -67,215 +67,6 @@ typedef struct HVCCProfileTierLevel {
     uint8_t  level_idc;
 } HVCCProfileTierLevel;
 
-static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
-{
-    memset(hvcc, 0, sizeof(HEVCDecoderConfigurationRecord));
-    hvcc->configurationVersion = 1;
-    hvcc->lengthSizeMinusOne   = 3; // 4 bytes
-
-    /*
-     * The following fields have all their valid bits set by default,
-     * the ProfileTierLevel parsing code will unset them when needed.
-     */
-    hvcc->general_profile_compatibility_flags = 0xffffffff;
-    hvcc->general_constraint_indicator_flags  = 0xffffffffffff;
-
-    /*
-     * Initialize this field with an invalid value which can be used to detect
-     * whether we didn't see any VUI (in wich case it should be reset to zero).
-     */
-    hvcc->min_spatial_segmentation_idc = MAX_SPATIAL_SEGMENTATION + 1;
-}
-
-static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc)
-{
-    uint8_t i;
-
-    for (i = 0; i < hvcc->numOfArrays; i++) {
-        hvcc->array[i].numNalus = 0;
-        av_freep(&hvcc->array[i].nalUnit);
-        av_freep(&hvcc->array[i].nalUnitLength);
-    }
-
-    hvcc->numOfArrays = 0;
-    av_freep(&hvcc->array);
-}
-
-static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
-{
-    uint8_t i;
-    uint16_t j, k, vps_count = 0, sps_count = 0, pps_count = 0;
-
-    /*
-     * If min_spatial_segmentation_idc is invalid, reset to 0 (unspecified).
-     */
-    if (hvcc->min_spatial_segmentation_idc > MAX_SPATIAL_SEGMENTATION)
-        hvcc->min_spatial_segmentation_idc = 0;
-
-    /*
-     * parallelismType indicates the type of parallelism that is used to meet
-     * the restrictions imposed by min_spatial_segmentation_idc when the value
-     * of min_spatial_segmentation_idc is greater than 0.
-     */
-    if (!hvcc->min_spatial_segmentation_idc)
-        hvcc->parallelismType = 0;
-
-    /*
-     * It's unclear how to properly compute these fields, so
-     * let's always set them to values meaning 'unspecified'.
-     */
-    hvcc->avgFrameRate      = 0;
-    hvcc->constantFrameRate = 0;
-
-    av_dlog(NULL,  "configurationVersion:                %"PRIu8"\n",
-           hvcc->configurationVersion);
-    av_dlog(NULL,  "general_profile_space:               %"PRIu8"\n",
-           hvcc->general_profile_space);
-    av_dlog(NULL,  "general_tier_flag:                   %"PRIu8"\n",
-           hvcc->general_tier_flag);
-    av_dlog(NULL,  "general_profile_idc:                 %"PRIu8"\n",
-           hvcc->general_profile_idc);
-    av_dlog(NULL, "general_profile_compatibility_flags: 0x%08"PRIx32"\n",
-           hvcc->general_profile_compatibility_flags);
-    av_dlog(NULL, "general_constraint_indicator_flags:  0x%012"PRIx64"\n",
-           hvcc->general_constraint_indicator_flags);
-    av_dlog(NULL,  "general_level_idc:                   %"PRIu8"\n",
-           hvcc->general_level_idc);
-    av_dlog(NULL,  "min_spatial_segmentation_idc:        %"PRIu16"\n",
-           hvcc->min_spatial_segmentation_idc);
-    av_dlog(NULL,  "parallelismType:                     %"PRIu8"\n",
-           hvcc->parallelismType);
-    av_dlog(NULL,  "chromaFormat:                        %"PRIu8"\n",
-           hvcc->chromaFormat);
-    av_dlog(NULL,  "bitDepthLumaMinus8:                  %"PRIu8"\n",
-           hvcc->bitDepthLumaMinus8);
-    av_dlog(NULL,  "bitDepthChromaMinus8:                %"PRIu8"\n",
-           hvcc->bitDepthChromaMinus8);
-    av_dlog(NULL,  "avgFrameRate:                        %"PRIu16"\n",
-           hvcc->avgFrameRate);
-    av_dlog(NULL,  "constantFrameRate:                   %"PRIu8"\n",
-           hvcc->constantFrameRate);
-    av_dlog(NULL,  "numTemporalLayers:                   %"PRIu8"\n",
-           hvcc->numTemporalLayers);
-    av_dlog(NULL,  "temporalIdNested:                    %"PRIu8"\n",
-           hvcc->temporalIdNested);
-    av_dlog(NULL,  "lengthSizeMinusOne:                  %"PRIu8"\n",
-           hvcc->lengthSizeMinusOne);
-    av_dlog(NULL,  "numOfArrays:                         %"PRIu8"\n",
-           hvcc->numOfArrays);
-    for (i = 0; i < hvcc->numOfArrays; i++) {
-        av_dlog(NULL, "array_completeness[%"PRIu8"]:               %"PRIu8"\n",
-               i, hvcc->array[i].array_completeness);
-        av_dlog(NULL, "NAL_unit_type[%"PRIu8"]:                    %"PRIu8"\n",
-               i, hvcc->array[i].NAL_unit_type);
-        av_dlog(NULL, "numNalus[%"PRIu8"]:                         %"PRIu16"\n",
-               i, hvcc->array[i].numNalus);
-        for (j = 0; j < hvcc->array[i].numNalus; j++)
-            av_dlog(NULL,
-                    "nalUnitLength[%"PRIu8"][%"PRIu16"]:                 %"PRIu16"\n",
-                   i, j, hvcc->array[i].nalUnitLength[j]);
-    }
-
-    /*
-     * We need at least one of each: VPS, SPS and PPS.
-     */
-    for (i = 0; i < hvcc->numOfArrays; i++)
-        switch (hvcc->array[i].NAL_unit_type) {
-        case NAL_VPS:
-            vps_count += hvcc->array[i].numNalus;
-            break;
-        case NAL_SPS:
-            sps_count += hvcc->array[i].numNalus;
-            break;
-        case NAL_PPS:
-            pps_count += hvcc->array[i].numNalus;
-            break;
-        default:
-            break;
-        }
-    if (!vps_count || vps_count > MAX_VPS_COUNT ||
-        !sps_count || sps_count > MAX_SPS_COUNT ||
-        !pps_count || pps_count > MAX_PPS_COUNT)
-        return AVERROR_INVALIDDATA;
-
-    // unsigned int(8) configurationVersion = 1;
-    avio_w8(pb, hvcc->configurationVersion);
-
-    // unsigned int(2) general_profile_space;
-    // unsigned int(1) general_tier_flag;
-    // unsigned int(5) general_profile_idc;
-    avio_w8(pb, hvcc->general_profile_space << 6 |
-                hvcc->general_tier_flag     << 5 |
-                hvcc->general_profile_idc);
-
-    // unsigned int(32) general_profile_compatibility_flags;
-    avio_wb32(pb, hvcc->general_profile_compatibility_flags);
-
-    // unsigned int(48) general_constraint_indicator_flags;
-    avio_wb32(pb, hvcc->general_constraint_indicator_flags >> 16);
-    avio_wb16(pb, hvcc->general_constraint_indicator_flags);
-
-    // unsigned int(8) general_level_idc;
-    avio_w8(pb, hvcc->general_level_idc);
-
-    // bit(4) reserved = ‘1111’b;
-    // unsigned int(12) min_spatial_segmentation_idc;
-    avio_wb16(pb, hvcc->min_spatial_segmentation_idc | 0xf000);
-
-    // bit(6) reserved = ‘111111’b;
-    // unsigned int(2) parallelismType;
-    avio_w8(pb, hvcc->parallelismType | 0xfc);
-
-    // bit(6) reserved = ‘111111’b;
-    // unsigned int(2) chromaFormat;
-    avio_w8(pb, hvcc->chromaFormat | 0xfc);
-
-    // bit(5) reserved = ‘11111’b;
-    // unsigned int(3) bitDepthLumaMinus8;
-    avio_w8(pb, hvcc->bitDepthLumaMinus8 | 0xf8);
-
-    // bit(5) reserved = ‘11111’b;
-    // unsigned int(3) bitDepthChromaMinus8;
-    avio_w8(pb, hvcc->bitDepthChromaMinus8 | 0xf8);
-
-    // bit(16) avgFrameRate;
-    avio_wb16(pb, hvcc->avgFrameRate);
-
-    // bit(2) constantFrameRate;
-    // bit(3) numTemporalLayers;
-    // bit(1) temporalIdNested;
-    // unsigned int(2) lengthSizeMinusOne;
-    avio_w8(pb, hvcc->constantFrameRate << 6 |
-                hvcc->numTemporalLayers << 3 |
-                hvcc->temporalIdNested  << 2 |
-                hvcc->lengthSizeMinusOne);
-
-    // unsigned int(8) numOfArrays;
-    avio_w8(pb, hvcc->numOfArrays);
-
-    for (i = 0; i < hvcc->numOfArrays; i++) {
-        // bit(1) array_completeness;
-        // unsigned int(1) reserved = 0;
-        // unsigned int(6) NAL_unit_type;
-        avio_w8(pb, hvcc->array[i].array_completeness << 7 |
-                    hvcc->array[i].NAL_unit_type & 0x3f);
-
-        // unsigned int(16) numNalus;
-        avio_wb16(pb, hvcc->array[i].numNalus);
-
-        for (j = 0; j < hvcc->array[i].numNalus; j++) {
-            // unsigned int(16) nalUnitLength;
-            avio_wb16(pb, hvcc->array[i].nalUnitLength[j]);
-
-            // bit(8*nalUnitLength) nalUnit;
-            for (k = 0; k < hvcc->array[i].nalUnitLength[j]; k++)
-                avio_w8(pb, hvcc->array[i].nalUnit[j][k]);
-        }
-    }
-
-    return 0;
-}
-
 static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
                             HVCCProfileTierLevel *ptl)
 {
@@ -395,8 +186,7 @@ static void skip_sub_layer_hrd_parameters(GetBitContext *gb,
     }
 }
 
-static void skip_hrd_parameters(GetBitContext *gb,
-                                uint8_t common_inf_present_flag,
+static void skip_hrd_parameters(GetBitContext *gb, uint8_t cprms_present_flag,
                                 unsigned int max_sub_layers_minus1)
 {
     unsigned int i;
@@ -404,7 +194,7 @@ static void skip_hrd_parameters(GetBitContext *gb,
     uint8_t nal_hrd_parameters_present_flag = 0;
     uint8_t vcl_hrd_parameters_present_flag = 0;
 
-    if (common_inf_present_flag) {
+    if (cprms_present_flag) {
         nal_hrd_parameters_present_flag = get_bits1(gb);
         vcl_hrd_parameters_present_flag = get_bits1(gb);
 
@@ -600,8 +390,7 @@ static void skip_scaling_list_data(GetBitContext *gb)
             }
 }
 
-static int parse_rps(GetBitContext *gb,
-                     unsigned int rps_idx,
+static int parse_rps(GetBitContext *gb, unsigned int rps_idx,
                      unsigned int num_rps,
                      unsigned int num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT])
 {
@@ -860,8 +649,8 @@ static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
     skip_bits(gb, 9);
 }
 
-static int hvcc_array_add_nal_unit(uint8_t *nal_buf,
-                                   uint32_t nal_size, uint8_t nal_type,
+static int hvcc_array_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
+                                   uint8_t nal_type,
                                    HEVCDecoderConfigurationRecord *hvcc)
 {
     int ret;
@@ -926,30 +715,239 @@ static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
     nal_unit_parse_header(&gbc, &nal_type);
 
     switch (nal_type) {
-        case NAL_VPS:
-        case NAL_SPS:
-        case NAL_PPS:
-        case NAL_SEI_PREFIX:
-        case NAL_SEI_SUFFIX:
-            ret = hvcc_array_add_nal_unit(nal_buf, nal_size, nal_type, hvcc);
-            if (ret < 0)
-                goto fail;
-            else if (nal_type == NAL_VPS)
-                ret = hvcc_parse_vps(&gbc, hvcc);
-            else if (nal_type == NAL_SPS)
-                ret = hvcc_parse_sps(&gbc, hvcc);
-            else if (nal_type == NAL_PPS)
-                ret = hvcc_parse_pps(&gbc, hvcc);
-            if (ret < 0)
-                goto fail;
-            break;
-        default:
-            break;
+    case NAL_VPS:
+    case NAL_SPS:
+    case NAL_PPS:
+    case NAL_SEI_PREFIX:
+    case NAL_SEI_SUFFIX:
+        ret = hvcc_array_add_nal_unit(nal_buf, nal_size, nal_type, hvcc);
+        if (ret < 0)
+            goto fail;
+        else if (nal_type == NAL_VPS)
+            ret = hvcc_parse_vps(&gbc, hvcc);
+        else if (nal_type == NAL_SPS)
+            ret = hvcc_parse_sps(&gbc, hvcc);
+        else if (nal_type == NAL_PPS)
+            ret = hvcc_parse_pps(&gbc, hvcc);
+        if (ret < 0)
+            goto fail;
+        break;
+    default:
+        break;
     }
 
 fail:
     av_free(rbsp_buf);
     return ret;
+}
+
+static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
+{
+    memset(hvcc, 0, sizeof(HEVCDecoderConfigurationRecord));
+    hvcc->configurationVersion = 1;
+    hvcc->lengthSizeMinusOne   = 3; // 4 bytes
+
+    /*
+     * The following fields have all their valid bits set by default,
+     * the ProfileTierLevel parsing code will unset them when needed.
+     */
+    hvcc->general_profile_compatibility_flags = 0xffffffff;
+    hvcc->general_constraint_indicator_flags  = 0xffffffffffff;
+
+    /*
+     * Initialize this field with an invalid value which can be used to detect
+     * whether we didn't see any VUI (in wich case it should be reset to zero).
+     */
+    hvcc->min_spatial_segmentation_idc = MAX_SPATIAL_SEGMENTATION + 1;
+}
+
+static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc)
+{
+    uint8_t i;
+
+    for (i = 0; i < hvcc->numOfArrays; i++) {
+        hvcc->array[i].numNalus = 0;
+        av_freep(&hvcc->array[i].nalUnit);
+        av_freep(&hvcc->array[i].nalUnitLength);
+    }
+
+    hvcc->numOfArrays = 0;
+    av_freep(&hvcc->array);
+}
+
+static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
+{
+    uint8_t i;
+    uint16_t j, k, vps_count = 0, sps_count = 0, pps_count = 0;
+
+    /*
+     * If min_spatial_segmentation_idc is invalid, reset to 0 (unspecified).
+     */
+    if (hvcc->min_spatial_segmentation_idc > MAX_SPATIAL_SEGMENTATION)
+        hvcc->min_spatial_segmentation_idc = 0;
+
+    /*
+     * parallelismType indicates the type of parallelism that is used to meet
+     * the restrictions imposed by min_spatial_segmentation_idc when the value
+     * of min_spatial_segmentation_idc is greater than 0.
+     */
+    if (!hvcc->min_spatial_segmentation_idc)
+        hvcc->parallelismType = 0;
+
+    /*
+     * It's unclear how to properly compute these fields, so
+     * let's always set them to values meaning 'unspecified'.
+     */
+    hvcc->avgFrameRate      = 0;
+    hvcc->constantFrameRate = 0;
+
+    av_dlog(NULL,  "configurationVersion:                %"PRIu8"\n",
+            hvcc->configurationVersion);
+    av_dlog(NULL,  "general_profile_space:               %"PRIu8"\n",
+            hvcc->general_profile_space);
+    av_dlog(NULL,  "general_tier_flag:                   %"PRIu8"\n",
+            hvcc->general_tier_flag);
+    av_dlog(NULL,  "general_profile_idc:                 %"PRIu8"\n",
+            hvcc->general_profile_idc);
+    av_dlog(NULL, "general_profile_compatibility_flags: 0x%08"PRIx32"\n",
+            hvcc->general_profile_compatibility_flags);
+    av_dlog(NULL, "general_constraint_indicator_flags:  0x%012"PRIx64"\n",
+            hvcc->general_constraint_indicator_flags);
+    av_dlog(NULL,  "general_level_idc:                   %"PRIu8"\n",
+            hvcc->general_level_idc);
+    av_dlog(NULL,  "min_spatial_segmentation_idc:        %"PRIu16"\n",
+            hvcc->min_spatial_segmentation_idc);
+    av_dlog(NULL,  "parallelismType:                     %"PRIu8"\n",
+            hvcc->parallelismType);
+    av_dlog(NULL,  "chromaFormat:                        %"PRIu8"\n",
+            hvcc->chromaFormat);
+    av_dlog(NULL,  "bitDepthLumaMinus8:                  %"PRIu8"\n",
+            hvcc->bitDepthLumaMinus8);
+    av_dlog(NULL,  "bitDepthChromaMinus8:                %"PRIu8"\n",
+            hvcc->bitDepthChromaMinus8);
+    av_dlog(NULL,  "avgFrameRate:                        %"PRIu16"\n",
+            hvcc->avgFrameRate);
+    av_dlog(NULL,  "constantFrameRate:                   %"PRIu8"\n",
+            hvcc->constantFrameRate);
+    av_dlog(NULL,  "numTemporalLayers:                   %"PRIu8"\n",
+            hvcc->numTemporalLayers);
+    av_dlog(NULL,  "temporalIdNested:                    %"PRIu8"\n",
+            hvcc->temporalIdNested);
+    av_dlog(NULL,  "lengthSizeMinusOne:                  %"PRIu8"\n",
+            hvcc->lengthSizeMinusOne);
+    av_dlog(NULL,  "numOfArrays:                         %"PRIu8"\n",
+            hvcc->numOfArrays);
+    for (i = 0; i < hvcc->numOfArrays; i++) {
+        av_dlog(NULL, "array_completeness[%"PRIu8"]:               %"PRIu8"\n",
+                i, hvcc->array[i].array_completeness);
+        av_dlog(NULL, "NAL_unit_type[%"PRIu8"]:                    %"PRIu8"\n",
+                i, hvcc->array[i].NAL_unit_type);
+        av_dlog(NULL, "numNalus[%"PRIu8"]:                         %"PRIu16"\n",
+                i, hvcc->array[i].numNalus);
+        for (j = 0; j < hvcc->array[i].numNalus; j++)
+            av_dlog(NULL,
+                    "nalUnitLength[%"PRIu8"][%"PRIu16"]:                 %"PRIu16"\n",
+                    i, j, hvcc->array[i].nalUnitLength[j]);
+    }
+
+    /*
+     * We need at least one of each: VPS, SPS and PPS.
+     */
+    for (i = 0; i < hvcc->numOfArrays; i++)
+        switch (hvcc->array[i].NAL_unit_type) {
+        case NAL_VPS:
+            vps_count += hvcc->array[i].numNalus;
+            break;
+        case NAL_SPS:
+            sps_count += hvcc->array[i].numNalus;
+            break;
+        case NAL_PPS:
+            pps_count += hvcc->array[i].numNalus;
+            break;
+        default:
+            break;
+        }
+    if (!vps_count || vps_count > MAX_VPS_COUNT ||
+        !sps_count || sps_count > MAX_SPS_COUNT ||
+        !pps_count || pps_count > MAX_PPS_COUNT)
+        return AVERROR_INVALIDDATA;
+
+    // unsigned int(8) configurationVersion = 1;
+    avio_w8(pb, hvcc->configurationVersion);
+
+    // unsigned int(2) general_profile_space;
+    // unsigned int(1) general_tier_flag;
+    // unsigned int(5) general_profile_idc;
+    avio_w8(pb, hvcc->general_profile_space << 6 |
+                hvcc->general_tier_flag     << 5 |
+                hvcc->general_profile_idc);
+
+    // unsigned int(32) general_profile_compatibility_flags;
+    avio_wb32(pb, hvcc->general_profile_compatibility_flags);
+
+    // unsigned int(48) general_constraint_indicator_flags;
+    avio_wb32(pb, hvcc->general_constraint_indicator_flags >> 16);
+    avio_wb16(pb, hvcc->general_constraint_indicator_flags);
+
+    // unsigned int(8) general_level_idc;
+    avio_w8(pb, hvcc->general_level_idc);
+
+    // bit(4) reserved = ‘1111’b;
+    // unsigned int(12) min_spatial_segmentation_idc;
+    avio_wb16(pb, hvcc->min_spatial_segmentation_idc | 0xf000);
+
+    // bit(6) reserved = ‘111111’b;
+    // unsigned int(2) parallelismType;
+    avio_w8(pb, hvcc->parallelismType | 0xfc);
+
+    // bit(6) reserved = ‘111111’b;
+    // unsigned int(2) chromaFormat;
+    avio_w8(pb, hvcc->chromaFormat | 0xfc);
+
+    // bit(5) reserved = ‘11111’b;
+    // unsigned int(3) bitDepthLumaMinus8;
+    avio_w8(pb, hvcc->bitDepthLumaMinus8 | 0xf8);
+
+    // bit(5) reserved = ‘11111’b;
+    // unsigned int(3) bitDepthChromaMinus8;
+    avio_w8(pb, hvcc->bitDepthChromaMinus8 | 0xf8);
+
+    // bit(16) avgFrameRate;
+    avio_wb16(pb, hvcc->avgFrameRate);
+
+    // bit(2) constantFrameRate;
+    // bit(3) numTemporalLayers;
+    // bit(1) temporalIdNested;
+    // unsigned int(2) lengthSizeMinusOne;
+    avio_w8(pb, hvcc->constantFrameRate << 6 |
+                hvcc->numTemporalLayers << 3 |
+                hvcc->temporalIdNested  << 2 |
+                hvcc->lengthSizeMinusOne);
+
+    // unsigned int(8) numOfArrays;
+    avio_w8(pb, hvcc->numOfArrays);
+
+    for (i = 0; i < hvcc->numOfArrays; i++) {
+        // bit(1) array_completeness;
+        // unsigned int(1) reserved = 0;
+        // unsigned int(6) NAL_unit_type;
+        avio_w8(pb, hvcc->array[i].array_completeness << 7 |
+                    hvcc->array[i].NAL_unit_type & 0x3f);
+
+        // unsigned int(16) numNalus;
+        avio_wb16(pb, hvcc->array[i].numNalus);
+
+        for (j = 0; j < hvcc->array[i].numNalus; j++) {
+            // unsigned int(16) nalUnitLength;
+            avio_wb16(pb, hvcc->array[i].nalUnitLength[j]);
+
+            // bit(8*nalUnitLength) nalUnit;
+            for (k = 0; k < hvcc->array[i].nalUnitLength[j]; k++)
+                avio_w8(pb, hvcc->array[i].nalUnit[j][k]);
+        }
+    }
+
+    return 0;
 }
 
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
