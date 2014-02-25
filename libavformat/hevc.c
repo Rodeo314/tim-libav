@@ -67,6 +67,14 @@ typedef struct HVCCProfileTierLevel {
     uint8_t  level_idc;
 } HVCCProfileTierLevel;
 
+static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc);
+static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_add_nal_unit(const uint8_t *nal_buf, int nal_size, HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_parse_vps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_parse_sps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_parse_pps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
+
 static int binar_ize(uint8_t n)
 {
     int i, ret = 0;
@@ -320,8 +328,8 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
     return 0;
 }
 
-static int hvcc_add_nal_unit(HEVCDecoderConfigurationRecord *hvcc,
-                             const uint8_t *nal_buf, int nal_size)
+static int hvcc_add_nal_unit(const uint8_t *nal_buf, int nal_size,
+                             HEVCDecoderConfigurationRecord *hvcc)
 {
     GetBitContext gbc;
     uint8_t *rbsp_buf;
@@ -338,6 +346,20 @@ static int hvcc_add_nal_unit(HEVCDecoderConfigurationRecord *hvcc,
         goto fail;
 
     nal_unit_parse_header(&gbc, &nal_type);
+
+    switch (nal_type) {
+    case NAL_VPS:
+        hvcc_parse_vps(&gbc, hvcc);
+        break;
+    case NAL_SPS:
+        hvcc_parse_sps(&gbc, hvcc);
+        break;
+    case NAL_PPS:
+        hvcc_parse_pps(&gbc, hvcc);
+        break;
+    default:
+        break;
+    }
 
 fail:
     av_free(rbsp_buf);
@@ -909,7 +931,7 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 buf += 4;
 
                 if (size) {
-                    ret = hvcc_add_nal_unit(&hvcc, buf, size);
+                    ret = hvcc_add_nal_unit(buf, size, &hvcc);
                     if (ret < 0)
                         goto fail;
                 }
