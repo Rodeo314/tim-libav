@@ -180,13 +180,17 @@ static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
     hvcc->configurationVersion = 1;
     hvcc->lengthSizeMinusOne   = 3; // 4 bytes
 
-    // the following fields have all their valid bits set by default
-    // the VPS/SPS/PPS parsing code will unset the bits as necessary
+    /*
+     * The following fields have all their valid bits set by default,
+     * the ProfileTierLevel parsing code will unset them when needed.
+     */
     hvcc->general_profile_compatibility_flags = 0xffffffff;
     hvcc->general_constraint_indicator_flags  = 0xffffffffffff;
 
-    // initialize this field with an invalid value which can be used to detect
-    // whether we didn't see any VUI (in wich case it should be reset to zero)
+    /*
+     * Initialize this field with an invalid value which can be used to detect
+     * whether we didn't see any VUI (in wich case it should be reset to zero).
+     */
     hvcc->min_spatial_segmentation_idc = MAX_SPATIAL_SEGMENTATION + 1;
 }
 
@@ -202,6 +206,13 @@ static void hvcc_finalize(HEVCDecoderConfigurationRecord *hvcc)
      */
     if (!hvcc->min_spatial_segmentation_idc)
         hvcc->parallelismType = 0;
+
+    /*
+     * It's unclear how to properly compute these fields, so
+     * let's always set them to values meaning 'unspecified'.
+     */
+    hvcc->avgFrameRate      = 0;
+    hvcc->constantFrameRate = 0;
 }
 
 static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
