@@ -715,6 +715,15 @@ static int hvcc_array_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
     array->NAL_unit_type           = nal_type;
     array->numNalus++;
 
+    /*
+     * When the sample entry name is ‘hvc1’, the default and mandatory value of
+     * array_completeness is 1 for arrays of all types of parameter sets, and 0
+     * for all other arrays. When the sample entry name is ‘hev1’, the default
+     * value of array_completeness is 0 for all arrays.
+     */
+    if (nal_type == NAL_VPS || nal_type == NAL_SPS || nal_type == NAL_PPS)
+        array->array_completeness = 1;
+
     return 0;
 }
 
