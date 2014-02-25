@@ -95,39 +95,34 @@ static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
 
-static int nal_unit_extract_rbsp(const uint8_t *src, int src_len, uint8_t **dst,
-                                 int *dst_len)
+static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, int src_len,
+                                      int *dst_len)
 {
     int i, len;
-    uint8_t *buf;
+    uint8_t *dst;
 
+    dst = av_malloc(src_len);
     if (!dst)
-        return AVERROR_BUG;
-
-    av_fast_malloc(dst, dst_len, src_len);
-    buf = *dst;
-    if (!buf)
-        return AVERROR(ENOMEM);
+        return NULL;
 
     // always copy the header (2 bytes)
     i = len = 0;
     while (i < 2 && i < src_len)
-        buf[len++] = src[i++];
+        dst[len++] = src[i++];
 
     while (i + 2 < src_len)
         if (!src[i] && !src[i + 1] && src[i + 2] == 3) {
-            buf[len++] = src[i++];
-            buf[len++] = src[i++];
+            dst[len++] = src[i++];
+            dst[len++] = src[i++];
             i++; // remove emulation_prevention_three_byte
         } else
-            buf[len++] = src[i++];
+            dst[len++] = src[i++];
 
     while (i < src_len)
-        buf[len++] = src[i++];
+        dst[len++] = src[i++];
 
-    *dst     = buf;
     *dst_len = len;
-    return i - len;
+    return dst;
 }
 
 static void dump_nal_full(uint8_t *buf, int size, const char *name)
@@ -147,7 +142,8 @@ static void dump_nal_rbsp(uint8_t *buf, int size, const char *name)
     uint8_t *tmp = NULL;
     int tmp_size = 0;
 
-    if (nal_unit_extract_rbsp((const uint8_t*)buf, size, &tmp, &tmp_size) < 0)
+    tmp = nal_unit_extract_rbsp(buf, size, &tmp_size);
+    if (!tmp)
         return;
 
     buf  = tmp;
@@ -161,6 +157,8 @@ static void dump_nal_rbsp(uint8_t *buf, int size, const char *name)
                binar_ize((buf[i] & 0x0f)));
     }
     av_log(NULL, AV_LOG_FATAL, "\n");
+
+    av_free(buf);
 }
 
 static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
@@ -486,25 +484,29 @@ static void skip_sub_layer_ordering_info(GetBitContext *gb)
     get_ue_golomb(gb); // max_latency_increase_plus1
 }
 
-static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
+static int hvcc_parse_vps(const uint8_t *vps_buf, int vps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int vps_max_sub_layers_minus1;
-    int ret, nal_size = 0;
-    uint8_t nal_type, *nal_buf = NULL;
+    int nal_size, ret = 0;
+    uint8_t nal_type, *nal_buf;
     GetBitContext gbc, *gb = &gbc;
+    int vps_max_sub_layers_minus1;
 
-    ret = nal_unit_extract_rbsp(vps_buf, vps_size, &nal_buf, &nal_size);
-    if (ret < 0)
-        return ret;
+    nal_buf = nal_unit_extract_rbsp(vps_buf, vps_size, &nal_size);
+    if (!nal_buf) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
 
     ret = init_get_bits8(gb, nal_buf, nal_size);
     if (ret < 0)
-        return ret;
+        goto fail;
 
     nal_unit_parse_header(gb, &nal_type);
-    if (nal_type != NAL_VPS)
-        return AVERROR_BUG;
+    if (nal_type != NAL_VPS) {
+        ret = AVERROR_BUG;
+        goto fail;
+    }
 
     // vps_video_parameter_set_id u(4)
     // vps_reserved_three_2bits   u(2)
@@ -531,7 +533,9 @@ static int hvcc_parse_vps(uint8_t *vps_buf, int vps_size,
     hvcc_parse_ptl(gb, hvcc, vps_max_sub_layers_minus1);
 
     // nothing useful for hvcC past this point
-    return 0;
+fail:
+    av_free(nal_buf);
+    return ret;
 }
 
 static void skip_scaling_list_data(GetBitContext *gb)
@@ -616,26 +620,30 @@ static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
     return 0;
 }
 
-static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
+static int hvcc_parse_sps(const uint8_t *sps_buf, int sps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
+    int i, nal_size, ret = 0;
+    uint8_t nal_type, *nal_buf;
+    GetBitContext gbc, *gb = &gbc;
     int sps_max_sub_layers_minus1, log2_max_pic_order_cnt_lsb_minus4;
     int num_short_term_ref_pic_sets, num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT];
-    int i, ret, nal_size = 0;
-    uint8_t nal_type, *nal_buf = NULL;
-    GetBitContext gbc, *gb = &gbc;
 
-    ret = nal_unit_extract_rbsp(sps_buf, sps_size, &nal_buf, &nal_size);
-    if (ret < 0)
-        return ret;
+    nal_buf = nal_unit_extract_rbsp(sps_buf, sps_size, &nal_size);
+    if (!nal_buf) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
 
     ret = init_get_bits8(gb, nal_buf, nal_size);
     if (ret < 0)
-        return ret;
+        goto fail;
 
     nal_unit_parse_header(gb, &nal_type);
-    if (nal_type != NAL_SPS)
-        return AVERROR_BUG;
+    if (nal_type != NAL_SPS) {
+        ret = AVERROR_BUG;
+        goto fail;
+    }
 
     skip_bits(gb, 4); // sps_video_parameter_set_id
 
@@ -705,13 +713,15 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
     }
 
     num_short_term_ref_pic_sets = get_ue_golomb(gb);
-    if (num_short_term_ref_pic_sets > MAX_SHORT_TERM_RPS_COUNT)
-        return AVERROR_INVALIDDATA;
+    if (num_short_term_ref_pic_sets > MAX_SHORT_TERM_RPS_COUNT) {
+        ret = AVERROR_INVALIDDATA;
+        goto fail;
+    }
 
     for (i = 0; i < num_short_term_ref_pic_sets; i++) {
         ret = parse_rps(gb, i, num_short_term_ref_pic_sets, num_delta_pocs);
         if (ret < 0)
-            return ret;
+            goto fail;
     }
 
     if (get_bits1(gb)) {                          // long_term_ref_pics_present_flag
@@ -729,28 +739,34 @@ static int hvcc_parse_sps(uint8_t *sps_buf, int sps_size,
         hvcc_parse_vui(gb, hvcc, sps_max_sub_layers_minus1);
 
     // nothing useful for hvcC past this point
-    return 0;
+fail:
+    av_free(nal_buf);
+    return ret;
 }
 
-static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
+static int hvcc_parse_pps(const uint8_t *pps_buf, int pps_size,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    uint8_t tiles_enabled_flag, entropy_coding_sync_enabled_flag;
-    uint8_t nal_type, *nal_buf = NULL;
-    int ret, nal_size = 0;
+    int nal_size, ret = 0;
+    uint8_t nal_type, *nal_buf;
     GetBitContext gbc, *gb = &gbc;
+    uint8_t tiles_enabled_flag, entropy_coding_sync_enabled_flag;
 
-    ret = nal_unit_extract_rbsp(pps_buf, pps_size, &nal_buf, &nal_size);
-    if (ret < 0)
-        return ret;
+    nal_buf = nal_unit_extract_rbsp(pps_buf, pps_size, &nal_size);
+    if (!nal_buf) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
 
     ret = init_get_bits8(gb, nal_buf, nal_size);
     if (ret < 0)
-        return ret;
+        goto fail;
 
     nal_unit_parse_header(gb, &nal_type);
-    if (nal_type != NAL_PPS)
-        return AVERROR_BUG;
+    if (nal_type != NAL_PPS) {
+        ret = AVERROR_BUG;
+        goto fail;
+    }
 
     get_ue_golomb(gb); // pps_pic_parameter_set_id
     get_ue_golomb(gb); // pps_seq_parameter_set_id
@@ -795,7 +811,9 @@ static int hvcc_parse_pps(uint8_t *pps_buf, int pps_size,
         hvcc->parallelismType = 1; // slice-based parallel decoding
 
     // nothing useful for hvcC past this point
-    return 0;
+fail:
+    av_free(nal_buf);
+    return ret;
 }
 
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
