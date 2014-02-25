@@ -194,19 +194,31 @@ static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc)
 static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
 {
     int i;
+    uint16_t vps_count = 0, sps_count = 0, pps_count = 0;
+    //fixme
+    ++vps_count; ++sps_count; ++pps_count;
 
     /*
      * We need at least one of each: VPS, SPS and PPS.
      */
-    if (hvcc->numOfArrays < 3 && 0)//fixme
-        return AVERROR_INVALIDDATA;
     for (i = 0; i < hvcc->numOfArrays; i++)
-        if (!hvcc->array[i].numNalus && 0 &&//fixme
-            (hvcc->array[i].NAL_unit_type == NAL_VPS ||
-             hvcc->array[i].NAL_unit_type == NAL_SPS ||
-             hvcc->array[i].NAL_unit_type == NAL_PPS))
-            return AVERROR_INVALIDDATA;
-
+        switch (hvcc->array[i].NAL_unit_type) {
+        case NAL_VPS:
+            vps_count += hvcc->array[i].numNalus;
+            break;
+        case NAL_SPS:
+            sps_count += hvcc->array[i].numNalus;
+            break;
+        case NAL_PPS:
+            pps_count += hvcc->array[i].numNalus;
+            break;
+        default:
+            break;
+        }
+    if (!vps_count || vps_count > MAX_VPS_COUNT ||
+        !sps_count || sps_count > MAX_SPS_COUNT ||
+        !pps_count || pps_count > MAX_PPS_COUNT)
+        return AVERROR_INVALIDDATA;
 
     /*
      * If min_spatial_segmentation_idc is invalid, reset to 0 (unspecified).
