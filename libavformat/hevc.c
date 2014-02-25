@@ -146,7 +146,7 @@ static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, int src_len,
 
 
 
-static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
+static void nal_unit_parse_header(GetBitContext *gb, int *nal_type)
 {
     skip_bits1(gb); // forbidden_zero_bit
 
@@ -318,6 +318,30 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
 
     dump_hvcc (hvcc);//fixme
     return 0;
+}
+
+static int hvcc_add_nal_unit(HEVCDecoderConfigurationRecord *hvcc,
+                             const uint8_t *nal_buf, int nal_size)
+{
+    GetBitContext gbc;
+    uint8_t *rbsp_buf;
+    int rbsp_size, nal_type, ret = 0;
+
+    rbsp_buf = nal_unit_extract_rbsp(nal_buf, nal_size, &rbsp_size);
+    if (!rbsp_buf) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    ret = init_get_bits8(&gbc, rbsp_buf, rbsp_size);
+    if (ret < 0)
+        goto fail;
+
+    nal_unit_parse_header(&gbc, &nal_type);
+
+fail:
+    av_free(rbsp_buf);
+    return ret;
 }
 
 static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
@@ -609,7 +633,7 @@ static int hvcc_parse_vps(const uint8_t *vps_buf, int vps_size,
     if (ret < 0)
         goto fail;
 
-    nal_unit_parse_header(gb, &nal_type);
+    nal_unit_parse_header(gb, (int*)&nal_type);
     if (nal_type != NAL_VPS) {
         ret = AVERROR_BUG;
         goto fail;
@@ -746,7 +770,7 @@ static int hvcc_parse_sps(const uint8_t *sps_buf, int sps_size,
     if (ret < 0)
         goto fail;
 
-    nal_unit_parse_header(gb, &nal_type);
+    nal_unit_parse_header(gb, (int*)&nal_type);
     if (nal_type != NAL_SPS) {
         ret = AVERROR_BUG;
         goto fail;
@@ -869,7 +893,7 @@ static int hvcc_parse_pps(const uint8_t *pps_buf, int pps_size,
     if (ret < 0)
         goto fail;
 
-    nal_unit_parse_header(gb, &nal_type);
+    nal_unit_parse_header(gb, (int*)&nal_type);
     if (nal_type != NAL_PPS) {
         ret = AVERROR_BUG;
         goto fail;
@@ -931,58 +955,36 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
              * NAL unit start code, data is in Annex B
              * format and has to be converted to hvcC.
              */
-            int ret;
-            uint8_t *end;
+            int ret = 0;
+            uint8_t *end, *buf = NULL;
             HEVCDecoderConfigurationRecord hvcc;
-            uint32_t vps_size = 0, sps_size = 0, pps_size = 0;
-            uint8_t *buf = NULL, *vps = NULL, *sps = NULL, *pps = NULL;
+
+            hvcc_init(&hvcc);
 
             ret = ff_avc_parse_nal_units_buf(data, &buf, &len);
             if (ret < 0)
-                return ret;
+                goto fail;
 
             end = buf + len;
-            hvcc_init(&hvcc);
 
             while (end - buf > 4) {
-                int ret;
                 uint32_t size = FFMIN(AV_RB32(buf), end - buf - 4);
-                uint8_t  type = (buf[4] >> 1) & 0x3f;
+
                 buf += 4;
 
-                switch (type) {
-                case NAL_VPS:
-                    vps      = buf;
-                    vps_size = size;
-                    ret      = hvcc_parse_vps(buf, size, &hvcc);
+                if (size) {
+                    ret = hvcc_add_nal_unit(&hvcc, buf, size);
                     if (ret < 0)
-                        return ret;
-                    break;
-                case NAL_SPS:
-                    sps      = buf;
-                    sps_size = size;
-                    ret      = hvcc_parse_sps(buf, size, &hvcc);
-                    if (ret < 0)
-                        return ret;
-                    break;
-                case NAL_PPS:
-                    pps      = buf;
-                    pps_size = size;
-                    ret      = hvcc_parse_pps(buf, size, &hvcc);
-                    if (ret < 0)
-                        return ret;
-                    break;
-                default:
-                    break;
+                        goto fail;
                 }
 
                 buf += size;
             }
 
             ret = hvcc_write(pb, &hvcc);
+        fail:
             hvcc_close(&hvcc);
-            if (ret < 0)
-                return ret;
+            return ret;
         } else {
             /* Assume data is already hvcC-formatted */
             avio_write(pb, data, len);
