@@ -689,11 +689,12 @@ static int mov_write_avcc_tag(AVIOContext *pb, MOVTrack *track)
 static int mov_write_hvcc_tag(AVIOContext *pb, MOVTrack *track)
 {
     int64_t pos = avio_tell(pb);
-    
+
     avio_wb32(pb, 0);
     ffio_wfourcc(pb, "hvcC");
     ff_isom_write_hvcc(pb, track->vos_data, track->vos_len);
     return update_size(pb, pos);
+    //fixme: is this really it?
 }
 
 /* also used by all avid codecs (dv, imx, meridien) and their variants */
@@ -2190,7 +2191,7 @@ static int mov_write_isml_manifest(AVIOContext *pb, MOVMuxContext *mov)
         param_write_int(pb, "systemBitrate", track->enc->bit_rate);
         param_write_int(pb, "trackID", track_id);
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
-            if (track->enc->codec_id == AV_CODEC_ID_H264) {
+            if (track->enc->codec_id == AV_CODEC_ID_H264) { //fixme: HEVC
                 uint8_t *ptr;
                 int size = track->enc->extradata_size;
                 if (!ff_avc_write_annexb_extradata(track->enc->extradata, &ptr,
@@ -2206,7 +2207,7 @@ static int mov_write_isml_manifest(AVIOContext *pb, MOVMuxContext *mov)
                 param_write_hex(pb, "CodecPrivateData", track->enc->extradata,
                                 track->enc->extradata_size);
             }
-            //fixme HEVC
+
             param_write_int(pb, "MaxWidth", track->enc->width);
             param_write_int(pb, "MaxHeight", track->enc->height);
             param_write_int(pb, "DisplayWidth", track->enc->width);
@@ -2595,7 +2596,6 @@ static int mov_write_ftyp_tag(AVIOContext *pb, AVFormatContext *s)
         ffio_wfourcc(pb, "iso2");
         if (has_h264)
             ffio_wfourcc(pb, "avc1");
-        //fixme HEVC
     }
 
     if (mov->mode == MODE_3GP)
@@ -2651,7 +2651,7 @@ static void mov_write_uuidprof_tag(AVIOContext *pb, AVFormatContext *s)
     ffio_wfourcc(pb, "VPRF");   /* video */
     avio_wb32(pb, 0x0);
     avio_wb32(pb, 0x1);    /* TrackID */
-    if (video_codec->codec_id == AV_CODEC_ID_H264) {
+    if (video_codec->codec_id == AV_CODEC_ID_H264) {//fixme: HEVC
         ffio_wfourcc(pb, "avc1");
         avio_wb16(pb, 0x014D);
         avio_wb16(pb, 0x0015);
@@ -2931,20 +2931,13 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
         memcpy(trk->vos_data, enc->extradata, trk->vos_len);
     }
 
-    if (enc->codec_id == AV_CODEC_ID_H264 && trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {
-        /* from x264 or from bytestream h264 */
+    if ((enc->codec_id == AV_CODEC_ID_H264 || enc->codec_id == AV_CODEC_ID_HEVC) &&
+        trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {
+        /* from bytestream H.264/H.265 */
         /* nal reformating needed */
         if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
             ff_avc_parse_nal_units_buf(pkt->data, &reformatted_data,
                                        &size);
-            avio_write(pb, reformatted_data, size);
-        } else {
-            size = ff_avc_parse_nal_units(pb, pkt->data, pkt->size);
-        }
-    } else if (enc->codec_id == AV_CODEC_ID_HEVC && trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {//fixme
-        /* from bytestream H.265, NAL reformating needed? */
-        if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
-            ff_avc_parse_nal_units_buf(pkt->data, &reformatted_data, &size);
             avio_write(pb, reformatted_data, size);
         } else {
             size = ff_avc_parse_nal_units(pb, pkt->data, pkt->size);
