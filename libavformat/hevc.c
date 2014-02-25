@@ -71,7 +71,7 @@ static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc);
 static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_add_nal_unit(uint8_t *nal_buf, int nal_size, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_add_nal_unit_at_index(uint8_t *nal_buf, int nal_size, int nal_type, HEVCDecoderConfigurationRecord *hvcc, int index);
+static int  hvcc_array_add_nal_unit(uint8_t *nal_buf, int nal_size, int nal_type, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_parse_vps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_parse_sps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_parse_pps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
@@ -330,45 +330,44 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
     return 0;
 }
 
-static int hvcc_add_nal_unit_at_index(uint8_t *nal_buf, int nal_size, int nal_type,
-                                      HEVCDecoderConfigurationRecord *hvcc, int index)
+static int hvcc_array_add_nal_unit(uint8_t *nal_buf, int nal_size, int nal_type,
+                                   HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i, ret;
-    uint16_t numNalusAtIndex;
-    HVCCNALUnitArray *arrayAtIndex;
+    int index, ret;
+    uint16_t numNalus;
+    HVCCNALUnitArray *array;
+
+    for (index = 0; index < hvcc->numOfArrays; index++)
+        if (hvcc->array[index].NAL_unit_type == nal_type)
+            break;
 
     if (index >= hvcc->numOfArrays) {
-        ret = av_reallocp_array(&hvcc->array, index + 1,
-                                sizeof(HVCCNALUnitArray));
+        int i;
+
+        ret = av_reallocp_array(&hvcc->array, index + 1, sizeof(HVCCNALUnitArray));
         if (ret < 0)
             return ret;
 
-        /*
-         * Zero the newly-allocated structures, if any,
-         * before updating the count of initialized arrays.
-         */
         for (i = hvcc->numOfArrays; i <= index; i++)
             memset(&hvcc->array[i], 0, sizeof(HVCCNALUnitArray));
         hvcc->numOfArrays = index + 1;
     }
 
-    arrayAtIndex    = &hvcc->array[index];
-    numNalusAtIndex = arrayAtIndex->numNalus;
+    array    = &hvcc->array[index];
+    numNalus = array->numNalus;
 
-    ret = av_reallocp_array(&arrayAtIndex->nalUnit, numNalusAtIndex + 1,
-                            sizeof(uint8_t*));
+    ret = av_reallocp_array(&array->nalUnit, numNalus + 1, sizeof(uint8_t*));
     if (ret < 0)
         return ret;
 
-    ret = av_reallocp_array(&arrayAtIndex->nalUnitLength, numNalusAtIndex + 1,
-                            sizeof(uint16_t));
+    ret = av_reallocp_array(&array->nalUnitLength, numNalus + 1, sizeof(uint16_t));
     if (ret < 0)
         return ret;
 
-    arrayAtIndex->nalUnit      [numNalusAtIndex] = nal_buf;
-    arrayAtIndex->nalUnitLength[numNalusAtIndex] = nal_size;
-    arrayAtIndex->NAL_unit_type                  = nal_type;
-    arrayAtIndex->numNalus++;
+    array->nalUnit      [numNalus] = nal_buf;
+    array->nalUnitLength[numNalus] = nal_size;
+    array->NAL_unit_type           = nal_type;
+    array->numNalus++;
 
     return 0;
 }
@@ -394,30 +393,19 @@ static int hvcc_add_nal_unit(uint8_t *nal_buf, int nal_size,
 
     switch (nal_type) {
     case NAL_VPS:
-        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 0);
-        if (ret < 0)
-            goto fail;
-        hvcc_parse_vps(&gbc, hvcc);
-        break;
     case NAL_SPS:
-        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 1);
-        if (ret < 0)
-            goto fail;
-        hvcc_parse_sps(&gbc, hvcc);
-        break;
     case NAL_PPS:
-        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 2);
-        if (ret < 0)
-            goto fail;
-        hvcc_parse_pps(&gbc, hvcc);
-        break;
     case NAL_SEI_PREFIX:
-        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 3);
+    case NAL_SEI_SUFFIX:
+        ret = hvcc_array_add_nal_unit(nal_buf, nal_size, nal_type, hvcc);
         if (ret < 0)
             goto fail;
-        break;
-    case NAL_SEI_SUFFIX:
-        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 4);
+        else if (nal_type == NAL_VPS)
+            ret = hvcc_parse_vps(&gbc, hvcc);
+        else if (nal_type == NAL_SPS)
+            ret = hvcc_parse_sps(&gbc, hvcc);
+        else if (nal_type == NAL_PPS)
+            ret = hvcc_parse_pps(&gbc, hvcc);
         if (ret < 0)
             goto fail;
         break;
