@@ -801,6 +801,86 @@ fail:
     return ret;
 }
 
+static void hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
+{
+    hvcc_finalize(hvcc);
+
+    // unsigned int(8) configurationVersion = 1;
+    avio_w8(pb, hvcc->configurationVersion);
+
+    // unsigned int(2) general_profile_space;
+    // unsigned int(1) general_tier_flag;
+    // unsigned int(5) general_profile_idc;
+    avio_w8(pb, hvcc->general_profile_space << 6 |
+                hvcc->general_tier_flag     << 5 |
+                hvcc->general_profile_idc);
+
+    // unsigned int(32) general_profile_compatibility_flags;
+    avio_wb32(pb, hvcc->general_profile_compatibility_flags);
+
+    // unsigned int(48) general_constraint_indicator_flags;
+    avio_wb32(pb, hvcc->general_constraint_indicator_flags >> 16);
+    avio_wb16(pb, hvcc->general_constraint_indicator_flags);
+
+    // unsigned int(8) general_level_idc;
+    avio_w8(pb, hvcc->general_level_idc);
+
+    // bit(4) reserved = ‘1111’b;
+    // unsigned int(12) min_spatial_segmentation_idc;
+    avio_wb16(pb, hvcc->min_spatial_segmentation_idc | 0xf000);
+
+    // bit(6) reserved = ‘111111’b;
+    // unsigned int(2) parallelismType;
+    avio_w8(pb, hvcc->parallelismType | 0xfc);
+
+    // bit(6) reserved = ‘111111’b;
+    // unsigned int(2) chromaFormat;
+    avio_w8(pb, hvcc->chromaFormat | 0xfc);
+
+    // bit(5) reserved = ‘11111’b;
+    // unsigned int(3) bitDepthLumaMinus8;
+    avio_w8(pb, hvcc->bitDepthLumaMinus8 | 0xf8);
+
+    // bit(5) reserved = ‘11111’b;
+    // unsigned int(3) bitDepthChromaMinus8;
+    avio_w8(pb, hvcc->bitDepthChromaMinus8 | 0xf8);
+
+    // bit(16) avgFrameRate;
+    avio_wb16(pb, hvcc->avgFrameRate);
+
+    // bit(2) constantFrameRate;
+    // bit(3) numTemporalLayers;
+    // bit(1) temporalIdNested;
+    // unsigned int(2) lengthSizeMinusOne;
+    avio_w8(pb, hvcc->constantFrameRate << 6 |
+                hvcc->numTemporalLayers << 3 |
+                hvcc->temporalIdNested  << 2 |
+                hvcc->lengthSizeMinusOne);
+
+    // unsigned int(8) numOfArrays;
+    avio_w8(pb, hvcc->numOfArrays);
+
+    for (int i = 0; i < hvcc->numOfArrays; i++) {
+        // bit(1) array_completeness;
+        // unsigned int(1) reserved = 0;
+        // unsigned int(6) NAL_unit_type;
+        avio_w8(pb, hvcc->array[i].array_completeness << 7 |
+                hvcc->array[i].NAL_unit_type & 0x3f);
+
+        // unsigned int(16) numNalus;
+        avio_wb16(pb, hvcc->array[i].numNalus);
+
+        for (int j = 0; j < hvcc->array[i].numNalus; j++) {
+            // unsigned int(16) nalUnitLength;
+            avio_wb16(pb, hvcc->array[i].nalUnitLength[j]);
+
+            // bit(8*nalUnitLength) nalUnit;
+            for (int k = 0; k < hvcc->array[i].nalUnitLength[j]; k++)
+                avio_w8(pb, hvcc->array[i].nalUnit[j][k]);
+        }
+    }
+}
+
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
     if (len > 6) {
@@ -823,18 +903,11 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             /* look for vps, sps and pps */
             while (end - buf > 4) {
                 int ret;
-                uint8_t nal_type;
-                GetBitContext gbc, *gb = &gbc;
                 uint32_t size = FFMIN(AV_RB32(buf), end - buf - 4);
+                uint8_t  type = (buf[4] >> 1) & 0x3f;
                 buf += 4;
 
-                ret = init_get_bits8(gb, buf, size);
-                if (ret < 0)
-                    return ret;
-
-                nal_unit_parse_header(gb, &nal_type);
-
-                switch (nal_type) {
+                switch (type) {
                 case NAL_VPS:
                     vps      = buf;
                     vps_size = size;
@@ -869,83 +942,8 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 return AVERROR_INVALIDDATA;
             }
 
-            hvcc_finalize(&hvcc);
-            dump_hvcc    (&hvcc);
-
-            // unsigned int(8) configurationVersion = 1;
-            avio_w8(pb, hvcc.configurationVersion);
-
-            // unsigned int(2) general_profile_space;
-            // unsigned int(1) general_tier_flag;
-            // unsigned int(5) general_profile_idc;
-            avio_w8(pb, hvcc.general_profile_space << 6 |
-                        hvcc.general_tier_flag     << 5 |
-                        hvcc.general_profile_idc);
-
-            // unsigned int(32) general_profile_compatibility_flags;
-            avio_wb32(pb, hvcc.general_profile_compatibility_flags);
-
-            // unsigned int(48) general_constraint_indicator_flags;
-            avio_wb32(pb, hvcc.general_constraint_indicator_flags >> 16);
-            avio_wb16(pb, hvcc.general_constraint_indicator_flags);
-
-            // unsigned int(8) general_level_idc;
-            avio_w8(pb, hvcc.general_level_idc);
-
-            // bit(4) reserved = ‘1111’b;
-            // unsigned int(12) min_spatial_segmentation_idc;
-            avio_wb16(pb, hvcc.min_spatial_segmentation_idc | 0xf000);
-
-            // bit(6) reserved = ‘111111’b;
-            // unsigned int(2) parallelismType;
-            avio_w8(pb, hvcc.parallelismType | 0xfc);
-
-            // bit(6) reserved = ‘111111’b;
-            // unsigned int(2) chromaFormat;
-            avio_w8(pb, hvcc.chromaFormat | 0xfc);
-
-            // bit(5) reserved = ‘11111’b;
-            // unsigned int(3) bitDepthLumaMinus8;
-            avio_w8(pb, hvcc.bitDepthLumaMinus8 | 0xf8);
-
-            // bit(5) reserved = ‘11111’b;
-            // unsigned int(3) bitDepthChromaMinus8;
-            avio_w8(pb, hvcc.bitDepthChromaMinus8 | 0xf8);
-
-            // bit(16) avgFrameRate;
-            avio_wb16(pb, hvcc.avgFrameRate);
-
-            // bit(2) constantFrameRate;
-            // bit(3) numTemporalLayers;
-            // bit(1) temporalIdNested;
-            // unsigned int(2) lengthSizeMinusOne;
-            avio_w8(pb, hvcc.constantFrameRate << 6 |
-                        hvcc.numTemporalLayers << 3 |
-                        hvcc.temporalIdNested  << 2 |
-                        hvcc.lengthSizeMinusOne);
-
-            // unsigned int(8) numOfArrays;
-            avio_w8(pb, hvcc.numOfArrays);
-
-            for (int i = 0; i < hvcc.numOfArrays; i++) {
-                // bit(1) array_completeness;
-                // unsigned int(1) reserved = 0;
-                // unsigned int(6) NAL_unit_type;
-                avio_w8(pb, hvcc.array[i].array_completeness << 7 |
-                            hvcc.array[i].NAL_unit_type & 0x3f);
-
-                // unsigned int(16) numNalus;
-                avio_wb16(pb, hvcc.array[i].numNalus);
-
-                for (int j = 0; j < hvcc.array[i].numNalus; j++) {
-                    // unsigned int(16) nalUnitLength;
-                    avio_wb16(pb, hvcc.array[i].nalUnitLength[j]);
-
-                    // bit(8*nalUnitLength) nalUnit;
-                    for (int k = 0; k < hvcc.array[i].nalUnitLength[j]; k++)
-                        avio_w8(pb, hvcc.array[i].nalUnit[j][k]);
-                }
-            }
+            hvcc_write(pb, &hvcc);
+            dump_hvcc (    &hvcc);//fixme
         } else {
             avio_write(pb, data, len);
         }
