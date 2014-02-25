@@ -69,32 +69,29 @@ static int binar_ize(uint8_t n)
 #define HEVC_DEBUG_LOG(str, ...) av_log(NULL, AV_LOG_FATAL, "%s, %s: %d - " str, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
 static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i;
+    uint8_t *tmp;
     av_log(NULL, AV_LOG_FATAL, "\n");
-    av_log(NULL, AV_LOG_FATAL, "hvcc: configurationVersion:                %4"PRIu8"\n",  hvcc->configurationVersion);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_space:               %4"PRIu8"\n",  hvcc->general_profile_space);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_tier_flag:                   %4"PRIu8"\n",  hvcc->general_tier_flag);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_idc:                 %4"PRIu8"\n",  hvcc->general_profile_idc);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_compatibility_flags:");
-    for (i = 0; i < 4; i++) {
-        av_log(NULL, AV_LOG_FATAL, " %04d %04d",
-               binar_ize((((uint8_t*)&hvcc->general_profile_compatibility_flags)[i] & 0xf0) >> 4),
-               binar_ize((((uint8_t*)&hvcc->general_profile_compatibility_flags)[i] & 0x0f) >> 0));
-    }
-    av_log(NULL, AV_LOG_FATAL, "\n");
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_constraint_indicator_flags:  %04d\n",
-           binar_ize((((uint8_t*)&hvcc->general_constraint_indicator_flags)[2] & 0xf0) >> 4));
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_level_idc:                   %4"PRIu8"\n",  hvcc->general_level_idc);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: min_spatial_segmentation_idc:        %4"PRIu16"\n", hvcc->min_spatial_segmentation_idc);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: parallelismType:                     %4"PRIu8"\n",  hvcc->parallelismType);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: chromaFormat:                        %4"PRIu8"\n",  hvcc->chromaFormat);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: bitDepthLumaMinus8:                  %4"PRIu8"\n",  hvcc->bitDepthLumaMinus8);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: bitDepthChromaMinus8:                %4"PRIu8"\n",  hvcc->bitDepthChromaMinus8);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: avgFrameRate:                        %4"PRIu16"\n", hvcc->avgFrameRate);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: constantFrameRate:                   %4"PRIu8"\n",  hvcc->constantFrameRate);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: numTemporalLayers:                   %4"PRIu8"\n",  hvcc->numTemporalLayers);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: temporalIdNested:                    %4"PRIu8"\n",  hvcc->temporalIdNested);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: lengthSizeMinusOne:                  %4"PRIu8"\n",  hvcc->lengthSizeMinusOne);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: configurationVersion:                %4"PRIu8"\n",    hvcc->configurationVersion);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_space:               %4"PRIu8"\n",    hvcc->general_profile_space);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_tier_flag:                   %4"PRIu8"\n",    hvcc->general_tier_flag);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_idc:                 %4"PRIu8"\n",    hvcc->general_profile_idc);
+    tmp = (uint8_t*)&hvcc->general_profile_compatibility_flags;
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_compatibility_flags: %04d (0x%08"PRIx32")\n",
+           binar_ize((tmp[3] & 0xf0) >> 4), hvcc->general_profile_compatibility_flags);
+    tmp = (uint8_t*)&hvcc->general_constraint_indicator_flags;
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_constraint_indicator_flags:  %04d (0x%012"PRIx64")\n",
+           binar_ize((tmp[5] & 0xf0) >> 4), hvcc->general_constraint_indicator_flags);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: general_level_idc:                   %4"PRIu8"\n",    hvcc->general_level_idc);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: min_spatial_segmentation_idc:        %4"PRIu16"\n",   hvcc->min_spatial_segmentation_idc);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: parallelismType:                     %4"PRIu8"\n",    hvcc->parallelismType);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: chromaFormat:                        %4"PRIu8"\n",    hvcc->chromaFormat);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: bitDepthLumaMinus8:                  %4"PRIu8"\n",    hvcc->bitDepthLumaMinus8);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: bitDepthChromaMinus8:                %4"PRIu8"\n",    hvcc->bitDepthChromaMinus8);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: avgFrameRate:                        %4"PRIu16"\n",   hvcc->avgFrameRate);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: constantFrameRate:                   %4"PRIu8"\n",    hvcc->constantFrameRate);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: numTemporalLayers:                   %4"PRIu8"\n",    hvcc->numTemporalLayers);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: temporalIdNested:                    %4"PRIu8"\n",    hvcc->temporalIdNested);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: lengthSizeMinusOne:                  %4"PRIu8"\n",    hvcc->lengthSizeMinusOne);
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
 
@@ -186,7 +183,7 @@ static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
     // the following fields have all their valid bits set by default
     // the VPS/SPS/PPS parsing code will unset the bits as necessary
     hvcc->general_profile_compatibility_flags = 0xffffffff;
-    hvcc->general_constraint_indicator_flags  = 0x0000ffffffffffff;
+    hvcc->general_constraint_indicator_flags  = 0xffffffffffff;
 
     // initialize this field with an invalid value which can be used to detect
     // whether we didn't see any VUI (in wich case it should be reset to zero)
