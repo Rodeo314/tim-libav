@@ -67,107 +67,6 @@ typedef struct HVCCProfileTierLevel {
     uint8_t  level_idc;
 } HVCCProfileTierLevel;
 
-static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc);
-static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_array_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size, uint8_t nal_type, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_parse_vps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_parse_sps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_parse_pps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
-
-static int binar_ize(uint8_t n)
-{
-    int i, ret = 0;
-    for (i = 0; i < 8; i++)
-        if (n & (1 << i))
-            ret += (int)pow(10, i);
-    return ret;
-}
-
-static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
-{
-    uint8_t i;
-    uint16_t j;
-    uint8_t *tmp;
-    av_log(NULL, AV_LOG_FATAL, "\n");
-    av_log(NULL, AV_LOG_FATAL, "hvcc: configurationVersion:                %4"PRIu8"\n",    hvcc->configurationVersion);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_space:               %4"PRIu8"\n",    hvcc->general_profile_space);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_tier_flag:                   %4"PRIu8"\n",    hvcc->general_tier_flag);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_idc:                 %4"PRIu8"\n",    hvcc->general_profile_idc);
-    tmp = (uint8_t*)&hvcc->general_profile_compatibility_flags;
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_profile_compatibility_flags: %04d (0x%08"PRIx32")\n",
-           binar_ize((tmp[3] & 0xf0) >> 4), hvcc->general_profile_compatibility_flags);
-    tmp = (uint8_t*)&hvcc->general_constraint_indicator_flags;
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_constraint_indicator_flags:  %04d (0x%012"PRIx64")\n",
-           binar_ize((tmp[5] & 0xf0) >> 4), hvcc->general_constraint_indicator_flags);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: general_level_idc:                   %4"PRIu8"\n",    hvcc->general_level_idc);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: min_spatial_segmentation_idc:        %4"PRIu16"\n",   hvcc->min_spatial_segmentation_idc);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: parallelismType:                     %4"PRIu8"\n",    hvcc->parallelismType);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: chromaFormat:                        %4"PRIu8"\n",    hvcc->chromaFormat);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: bitDepthLumaMinus8:                  %4"PRIu8"\n",    hvcc->bitDepthLumaMinus8);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: bitDepthChromaMinus8:                %4"PRIu8"\n",    hvcc->bitDepthChromaMinus8);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: avgFrameRate:                        %4"PRIu16"\n",   hvcc->avgFrameRate);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: constantFrameRate:                   %4"PRIu8"\n",    hvcc->constantFrameRate);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: numTemporalLayers:                   %4"PRIu8"\n",    hvcc->numTemporalLayers);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: temporalIdNested:                    %4"PRIu8"\n",    hvcc->temporalIdNested);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: lengthSizeMinusOne:                  %4"PRIu8"\n",    hvcc->lengthSizeMinusOne);
-    av_log(NULL, AV_LOG_FATAL, "hvcc: numOfArrays:                         %4"PRIu8"\n",    hvcc->numOfArrays);
-    for (i = 0; i < hvcc->numOfArrays; i++) {
-        av_log(NULL, AV_LOG_FATAL, "\n");
-        av_log(NULL, AV_LOG_FATAL, "hvcc: array_completeness[%03d]:             %4"PRIu8"\n",  i, hvcc->array[i].array_completeness);
-        av_log(NULL, AV_LOG_FATAL, "hvcc: NAL_unit_type[%03d]:                  %4"PRIu8"\n",  i, hvcc->array[i].NAL_unit_type);
-        av_log(NULL, AV_LOG_FATAL, "hvcc: numNalus[%03d]:                       %4"PRIu16"\n", i, hvcc->array[i].numNalus);
-        for (j = 0; j < hvcc->array[i].numNalus; j++) {
-            av_log(NULL, AV_LOG_FATAL, "hvcc: nalUnitLength[%03d][%03d]:             %4"PRIu16"\n", i, j, hvcc->array[i].nalUnitLength[j]);
-        }
-    }
-    av_log(NULL, AV_LOG_FATAL, "\n");
-}
-
-static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, uint32_t src_len,
-                                      uint32_t *dst_len)
-{
-    uint8_t *dst;
-    uint32_t i, len;
-
-    dst = av_malloc(src_len);
-    if (!dst)
-        return NULL;
-
-    // always copy the header (2 bytes)
-    i = len = 0;
-    while (i < 2 && i < src_len)
-        dst[len++] = src[i++];
-
-    while (i + 2 < src_len)
-        if (!src[i] && !src[i + 1] && src[i + 2] == 3) {
-            dst[len++] = src[i++];
-            dst[len++] = src[i++];
-            i++; // remove emulation_prevention_three_byte
-        } else
-            dst[len++] = src[i++];
-
-    while (i < src_len)
-        dst[len++] = src[i++];
-
-    *dst_len = len;
-    return dst;
-}
-
-
-
-static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
-{
-    skip_bits1(gb); // forbidden_zero_bit
-
-    *nal_type = get_bits(gb, 6);
-
-    // nuh_layer_id          u(6)
-    // nuh_temporal_id_plus1 u(3)
-    skip_bits(gb, 9);
-}
-
 static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
 {
     memset(hvcc, 0, sizeof(HEVCDecoderConfigurationRecord));
@@ -208,6 +107,98 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
     uint16_t j, k, vps_count = 0, sps_count = 0, pps_count = 0;
 
     /*
+     * If min_spatial_segmentation_idc is invalid, reset to 0 (unspecified).
+     */
+    if (hvcc->min_spatial_segmentation_idc > MAX_SPATIAL_SEGMENTATION)
+        hvcc->min_spatial_segmentation_idc = 0;
+
+    /*
+     * parallelismType indicates the type of parallelism that is used to meet
+     * the restrictions imposed by min_spatial_segmentation_idc when the value
+     * of min_spatial_segmentation_idc is greater than 0.
+     */
+    if (!hvcc->min_spatial_segmentation_idc)
+        hvcc->parallelismType = 0;
+
+    /*
+     * It's unclear how to properly compute these fields, so
+     * let's always set them to values meaning 'unspecified'.
+     */
+    hvcc->avgFrameRate      = 0;
+    hvcc->constantFrameRate = 0;
+
+    // TODO: use av_dlog
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: configurationVersion:                %"PRIu8"\n",
+           hvcc->configurationVersion);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: general_profile_space:               %"PRIu8"\n",
+           hvcc->general_profile_space);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: general_tier_flag:                   %"PRIu8"\n",
+           hvcc->general_tier_flag);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: general_profile_idc:                 %"PRIu8"\n",
+           hvcc->general_profile_idc);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: general_profile_compatibility_flags: 0x%08"PRIx32"\n",
+           hvcc->general_profile_compatibility_flags);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: general_constraint_indicator_flags:  0x%012"PRIx64"\n",
+           hvcc->general_constraint_indicator_flags);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: general_level_idc:                   %"PRIu8"\n",
+           hvcc->general_level_idc);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: min_spatial_segmentation_idc:        %"PRIu16"\n",
+           hvcc->min_spatial_segmentation_idc);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: parallelismType:                     %"PRIu8"\n",
+           hvcc->parallelismType);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: chromaFormat:                        %"PRIu8"\n",
+           hvcc->chromaFormat);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: bitDepthLumaMinus8:                  %"PRIu8"\n",
+           hvcc->bitDepthLumaMinus8);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: bitDepthChromaMinus8:                %"PRIu8"\n",
+           hvcc->bitDepthChromaMinus8);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: avgFrameRate:                        %"PRIu16"\n",
+           hvcc->avgFrameRate);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: constantFrameRate:                   %"PRIu8"\n",
+           hvcc->constantFrameRate);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: numTemporalLayers:                   %"PRIu8"\n",
+           hvcc->numTemporalLayers);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: temporalIdNested:                    %"PRIu8"\n",
+           hvcc->temporalIdNested);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: lengthSizeMinusOne:                  %"PRIu8"\n",
+           hvcc->lengthSizeMinusOne);
+    av_log(NULL, AV_LOG_FATAL,
+           "hvcc: numOfArrays:                         %"PRIu8"\n",
+           hvcc->numOfArrays);
+    for (i = 0; i < hvcc->numOfArrays; i++) {
+        av_log(NULL, AV_LOG_FATAL,
+               "hvcc: array_completeness[%"PRIu8"]:               %"PRIu8"\n",
+               i, hvcc->array[i].array_completeness);
+        av_log(NULL, AV_LOG_FATAL,
+               "hvcc: NAL_unit_type[%"PRIu8"]:                    %"PRIu8"\n",
+               i, hvcc->array[i].NAL_unit_type);
+        av_log(NULL, AV_LOG_FATAL,
+               "hvcc: numNalus[%"PRIu8"]:                         %"PRIu16"\n",
+               i, hvcc->array[i].numNalus);
+        for (j = 0; j < hvcc->array[i].numNalus; j++)
+            av_log(NULL, AV_LOG_FATAL,
+                   "hvcc: nalUnitLength[%"PRIu8"][%"PRIu16"]:                 %"PRIu16"\n",
+                   i, j, hvcc->array[i].nalUnitLength[j]);
+    }
+
+    /*
      * We need at least one of each: VPS, SPS and PPS.
      */
     for (i = 0; i < hvcc->numOfArrays; i++)
@@ -228,27 +219,6 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
         !sps_count || sps_count > MAX_SPS_COUNT ||
         !pps_count || pps_count > MAX_PPS_COUNT)
         return AVERROR_INVALIDDATA;
-
-    /*
-     * If min_spatial_segmentation_idc is invalid, reset to 0 (unspecified).
-     */
-    if (hvcc->min_spatial_segmentation_idc > MAX_SPATIAL_SEGMENTATION)
-        hvcc->min_spatial_segmentation_idc = 0;
-
-    /*
-     * parallelismType indicates the type of parallelism that is used to meet
-     * the restrictions imposed by min_spatial_segmentation_idc when the value
-     * of min_spatial_segmentation_idc is greater than 0.
-     */
-    if (!hvcc->min_spatial_segmentation_idc)
-        hvcc->parallelismType = 0;
-
-    /*
-     * It's unclear how to properly compute these fields, so
-     * let's always set them to values meaning 'unspecified'.
-     */
-    hvcc->avgFrameRate      = 0;
-    hvcc->constantFrameRate = 0;
 
     // unsigned int(8) configurationVersion = 1;
     avio_w8(pb, hvcc->configurationVersion);
@@ -325,100 +295,7 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
         }
     }
 
-    dump_hvcc (hvcc);//fixme
     return 0;
-}
-
-static int hvcc_array_add_nal_unit(uint8_t *nal_buf,
-                                   uint32_t nal_size, uint8_t nal_type,
-                                   HEVCDecoderConfigurationRecord *hvcc)
-{
-    int ret;
-    uint8_t index;
-    uint16_t numNalus;
-    HVCCNALUnitArray *array;
-
-    for (index = 0; index < hvcc->numOfArrays; index++)
-        if (hvcc->array[index].NAL_unit_type == nal_type)
-            break;
-
-    if (index >= hvcc->numOfArrays) {
-        uint8_t i;
-
-        ret = av_reallocp_array(&hvcc->array, index + 1, sizeof(HVCCNALUnitArray));
-        if (ret < 0)
-            return ret;
-
-        for (i = hvcc->numOfArrays; i <= index; i++)
-            memset(&hvcc->array[i], 0, sizeof(HVCCNALUnitArray));
-        hvcc->numOfArrays = index + 1;
-    }
-
-    array    = &hvcc->array[index];
-    numNalus = array->numNalus;
-
-    ret = av_reallocp_array(&array->nalUnit, numNalus + 1, sizeof(uint8_t*));
-    if (ret < 0)
-        return ret;
-
-    ret = av_reallocp_array(&array->nalUnitLength, numNalus + 1, sizeof(uint16_t));
-    if (ret < 0)
-        return ret;
-
-    array->nalUnit      [numNalus] = nal_buf;
-    array->nalUnitLength[numNalus] = nal_size;
-    array->NAL_unit_type           = nal_type;
-    array->numNalus++;
-
-    return 0;
-}
-
-static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
-                             HEVCDecoderConfigurationRecord *hvcc)
-{
-    int ret = 0;
-    GetBitContext gbc;
-    uint8_t nal_type;
-    uint8_t *rbsp_buf;
-    uint32_t rbsp_size;
-
-    rbsp_buf = nal_unit_extract_rbsp(nal_buf, nal_size, &rbsp_size);
-    if (!rbsp_buf) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
-    ret = init_get_bits8(&gbc, rbsp_buf, rbsp_size);
-    if (ret < 0)
-        goto fail;
-
-    nal_unit_parse_header(&gbc, &nal_type);
-
-    switch (nal_type) {
-    case NAL_VPS:
-    case NAL_SPS:
-    case NAL_PPS:
-    case NAL_SEI_PREFIX:
-    case NAL_SEI_SUFFIX:
-        ret = hvcc_array_add_nal_unit(nal_buf, nal_size, nal_type, hvcc);
-        if (ret < 0)
-            goto fail;
-        else if (nal_type == NAL_VPS)
-            ret = hvcc_parse_vps(&gbc, hvcc);
-        else if (nal_type == NAL_SPS)
-            ret = hvcc_parse_sps(&gbc, hvcc);
-        else if (nal_type == NAL_PPS)
-            ret = hvcc_parse_pps(&gbc, hvcc);
-        if (ret < 0)
-            goto fail;
-        break;
-    default:
-        break;
-    }
-
-fail:
-    av_free(rbsp_buf);
-    return ret;
 }
 
 static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
@@ -461,7 +338,6 @@ static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
      * Note: set the profile to the highest value for the sake of simplicity.
      */
     hvcc->general_profile_idc = FFMAX(hvcc->general_profile_idc, ptl->profile_idc);
-        
 
     /*
      * Each bit in general_profile_compatibility_flags may only be set if all
@@ -961,6 +837,141 @@ static int hvcc_parse_pps(GetBitContext *gb,
 
     // nothing useful for hvcC past this point
     return 0;
+}
+
+static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, uint32_t src_len,
+                                      uint32_t *dst_len)
+{
+    uint8_t *dst;
+    uint32_t i, len;
+
+    dst = av_malloc(src_len);
+    if (!dst)
+        return NULL;
+
+    // always copy the header (2 bytes)
+    i = len = 0;
+    while (i < 2 && i < src_len)
+        dst[len++] = src[i++];
+
+    while (i + 2 < src_len)
+        if (!src[i] && !src[i + 1] && src[i + 2] == 3) {
+            dst[len++] = src[i++];
+            dst[len++] = src[i++];
+            i++; // remove emulation_prevention_three_byte
+        } else
+            dst[len++] = src[i++];
+
+    while (i < src_len)
+        dst[len++] = src[i++];
+
+    *dst_len = len;
+    return dst;
+}
+
+
+
+static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
+{
+    skip_bits1(gb); // forbidden_zero_bit
+
+    *nal_type = get_bits(gb, 6);
+
+    // nuh_layer_id          u(6)
+    // nuh_temporal_id_plus1 u(3)
+    skip_bits(gb, 9);
+}
+
+static int hvcc_array_add_nal_unit(uint8_t *nal_buf,
+                                   uint32_t nal_size, uint8_t nal_type,
+                                   HEVCDecoderConfigurationRecord *hvcc)
+{
+    int ret;
+    uint8_t index;
+    uint16_t numNalus;
+    HVCCNALUnitArray *array;
+
+    for (index = 0; index < hvcc->numOfArrays; index++)
+        if (hvcc->array[index].NAL_unit_type == nal_type)
+            break;
+
+    if (index >= hvcc->numOfArrays) {
+        uint8_t i;
+
+        ret = av_reallocp_array(&hvcc->array, index + 1, sizeof(HVCCNALUnitArray));
+        if (ret < 0)
+            return ret;
+
+        for (i = hvcc->numOfArrays; i <= index; i++)
+            memset(&hvcc->array[i], 0, sizeof(HVCCNALUnitArray));
+        hvcc->numOfArrays = index + 1;
+    }
+
+    array    = &hvcc->array[index];
+    numNalus = array->numNalus;
+
+    ret = av_reallocp_array(&array->nalUnit, numNalus + 1, sizeof(uint8_t*));
+    if (ret < 0)
+        return ret;
+
+    ret = av_reallocp_array(&array->nalUnitLength, numNalus + 1, sizeof(uint16_t));
+    if (ret < 0)
+        return ret;
+
+    array->nalUnit      [numNalus] = nal_buf;
+    array->nalUnitLength[numNalus] = nal_size;
+    array->NAL_unit_type           = nal_type;
+    array->numNalus++;
+
+    return 0;
+}
+
+static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
+                             HEVCDecoderConfigurationRecord *hvcc)
+{
+    int ret = 0;
+    GetBitContext gbc;
+    uint8_t nal_type;
+    uint8_t *rbsp_buf;
+    uint32_t rbsp_size;
+
+    rbsp_buf = nal_unit_extract_rbsp(nal_buf, nal_size, &rbsp_size);
+    if (!rbsp_buf) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    ret = init_get_bits8(&gbc, rbsp_buf, rbsp_size);
+    if (ret < 0)
+        goto fail;
+
+    nal_unit_parse_header(&gbc, &nal_type);
+
+    switch (nal_type) {
+        case NAL_VPS:
+        case NAL_SPS:
+        case NAL_PPS:
+        case NAL_SEI_PREFIX:
+        case NAL_SEI_SUFFIX:
+            ret = hvcc_array_add_nal_unit(nal_buf, nal_size, nal_type, hvcc);
+            if (ret < 0)
+                goto fail;
+            else if (nal_type == NAL_VPS)
+                ret = hvcc_parse_vps(&gbc, hvcc);
+            else if (nal_type == NAL_SPS)
+                ret = hvcc_parse_sps(&gbc, hvcc);
+            else if (nal_type == NAL_PPS)
+                ret = hvcc_parse_pps(&gbc, hvcc);
+            if (ret < 0)
+                goto fail;
+            break;
+        default:
+            break;
+    }
+
+fail:
+    av_free(rbsp_buf);
+    return ret;
 }
 
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
