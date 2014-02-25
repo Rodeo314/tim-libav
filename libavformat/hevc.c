@@ -149,15 +149,17 @@ static void hvcc_parse_ptl(GetBitContext *gb,
 
     for (i = 0; i < max_sub_layers_minus1; i++) {
         if (sub_layer_profile_present_flag[i]) {
-            // sub_layer_profile_space[i]                     u(2)
-            // sub_layer_tier_flag[i]                         u(1)
-            // sub_layer_profile_idc[i]                       u(5)
-            // sub_layer_profile_compatibility_flag[i][0..31] u(32)
-            // sub_layer_progressive_source_flag[i]           u(1)
-            // sub_layer_interlaced_source_flag[i]            u(1)
-            // sub_layer_non_packed_constraint_flag[i]        u(1)
-            // sub_layer_frame_only_constraint_flag[i]        u(1)
-            // sub_layer_reserved_zero_44bits[i]              u(44)
+            /*
+             * sub_layer_profile_space[i]                     u(2)
+             * sub_layer_tier_flag[i]                         u(1)
+             * sub_layer_profile_idc[i]                       u(5)
+             * sub_layer_profile_compatibility_flag[i][0..31] u(32)
+             * sub_layer_progressive_source_flag[i]           u(1)
+             * sub_layer_interlaced_source_flag[i]            u(1)
+             * sub_layer_non_packed_constraint_flag[i]        u(1)
+             * sub_layer_frame_only_constraint_flag[i]        u(1)
+             * sub_layer_reserved_zero_44bits[i]              u(44)
+             */
             skip_bits_long(gb, 32);
             skip_bits_long(gb, 32);
             skip_bits     (gb, 24);
@@ -203,22 +205,28 @@ static void skip_hrd_parameters(GetBitContext *gb, uint8_t cprms_present_flag,
             sub_pic_hrd_params_present_flag = get_bits1(gb);
 
             if (sub_pic_hrd_params_present_flag)
-                // tick_divisor_minus2                          u(8)
-                // du_cpb_removal_delay_increment_length_minus1 u(5)
-                // sub_pic_cpb_params_in_pic_timing_sei_flag    u(1)
-                // dpb_output_delay_du_length_minus1            u(5)
+                /*
+                 * tick_divisor_minus2                          u(8)
+                 * du_cpb_removal_delay_increment_length_minus1 u(5)
+                 * sub_pic_cpb_params_in_pic_timing_sei_flag    u(1)
+                 * dpb_output_delay_du_length_minus1            u(5)
+                 */
                 skip_bits(gb, 19);
 
-            // bit_rate_scale u(4)
-            // cpb_size_scale u(4)
+            /*
+             * bit_rate_scale u(4)
+             * cpb_size_scale u(4)
+             */
             skip_bits(gb, 8);
 
             if (sub_pic_hrd_params_present_flag)
                 skip_bits(gb, 4); // cpb_size_du_scale
 
-            // initial_cpb_removal_delay_length_minus1 u(5)
-            // au_cpb_removal_delay_length_minus1      u(5)
-            // dpb_output_delay_length_minus1          u(5)
+            /*
+             * initial_cpb_removal_delay_length_minus1 u(5)
+             * au_cpb_removal_delay_length_minus1      u(5)
+             * dpb_output_delay_length_minus1          u(5)
+             */
             skip_bits(gb, 15);
         }
     }
@@ -276,9 +284,11 @@ static void hvcc_parse_vui(GetBitContext *gb,
         skip_bits(gb, 4); // video_format u(3), video_full_range_flag u(1)
 
         if (get_bits1(gb)) // colour_description_present_flag
-            // colour_primaries         u(8)
-            // transfer_characteristics u(8)
-            // matrix_coeffs            u(8)
+            /*
+             * colour_primaries         u(8)
+             * transfer_characteristics u(8)
+             * matrix_coeffs            u(8)
+             */
             skip_bits(gb, 24);
     }
 
@@ -287,9 +297,11 @@ static void hvcc_parse_vui(GetBitContext *gb,
         get_ue_golomb_long(gb); // chroma_sample_loc_type_bottom_field
     }
 
-    // neutral_chroma_indication_flag u(1)
-    // field_seq_flag                 u(1)
-    // frame_field_info_present_flag  u(1)
+    /*
+     * neutral_chroma_indication_flag u(1)
+     * field_seq_flag                 u(1)
+     * frame_field_info_present_flag  u(1)
+     */
     skip_bits(gb, 3);
 
     if (get_bits1(gb)) {        // default_display_window_flag
@@ -307,9 +319,11 @@ static void hvcc_parse_vui(GetBitContext *gb,
     }
 
     if (get_bits1(gb)) { // bitstream_restriction_flag
-        // tiles_fixed_structure_flag              u(1)
-        // motion_vectors_over_pic_boundaries_flag u(1)
-        // restricted_ref_pic_lists_flag           u(1)
+        /*
+         * tiles_fixed_structure_flag              u(1)
+         * motion_vectors_over_pic_boundaries_flag u(1)
+         * restricted_ref_pic_lists_flag           u(1)
+         */
         skip_bits(gb, 3);
 
         min_spatial_segmentation_idc = get_ue_golomb_long(gb);
@@ -343,9 +357,11 @@ static int hvcc_parse_vps(GetBitContext *gb,
 {
     unsigned int vps_max_sub_layers_minus1;
 
-    // vps_video_parameter_set_id u(4)
-    // vps_reserved_three_2bits   u(2)
-    // vps_max_layers_minus1      u(6)
+    /*
+     * vps_video_parameter_set_id u(4)
+     * vps_reserved_three_2bits   u(2)
+     * vps_max_layers_minus1      u(6)
+     */
     skip_bits(gb, 12);
 
     vps_max_sub_layers_minus1 = get_bits(gb, 3);
@@ -361,13 +377,15 @@ static int hvcc_parse_vps(GetBitContext *gb,
     hvcc->numTemporalLayers = FFMAX(hvcc->numTemporalLayers,
                                     vps_max_sub_layers_minus1 + 1);
 
-    // vps_temporal_id_nesting_flag u(1)
-    // vps_reserved_0xffff_16bits   u(16)
+    /*
+     * vps_temporal_id_nesting_flag u(1)
+     * vps_reserved_0xffff_16bits   u(16)
+     */
     skip_bits(gb, 17);
 
     hvcc_parse_ptl(gb, hvcc, vps_max_sub_layers_minus1);
 
-    // nothing useful for hvcC past this point
+    /* nothing useful for hvcC past this point */
     return 0;
 }
 
@@ -397,7 +415,7 @@ static int parse_rps(GetBitContext *gb, unsigned int rps_idx,
     unsigned int i;
 
     if (rps_idx && get_bits1(gb)) { // inter_ref_pic_set_prediction_flag
-        // this should only happen for slice headers, and this isn't one
+        /* this should only happen for slice headers, and this isn't one */
         if (rps_idx >= num_rps)
             return AVERROR_INVALIDDATA;
 
@@ -500,7 +518,7 @@ static int hvcc_parse_sps(GetBitContext *gb,
     hvcc->bitDepthChromaMinus8        = get_ue_golomb_long(gb);
     log2_max_pic_order_cnt_lsb_minus4 = get_ue_golomb_long(gb);
 
-    // sps_sub_layer_ordering_info_present_flag
+    /* sps_sub_layer_ordering_info_present_flag */
     i = get_bits1(gb) ? 0 : sps_max_sub_layers_minus1;
     for (; i <= sps_max_sub_layers_minus1; i++)
         skip_sub_layer_ordering_info(gb);
@@ -551,7 +569,7 @@ static int hvcc_parse_sps(GetBitContext *gb,
     if (get_bits1(gb)) // vui_parameters_present_flag
         hvcc_parse_vui(gb, hvcc, sps_max_sub_layers_minus1);
 
-    // nothing useful for hvcC past this point
+    /* nothing useful for hvcC past this point */
     return 0;
 }
 
@@ -563,20 +581,23 @@ static int hvcc_parse_pps(GetBitContext *gb,
     get_ue_golomb_long(gb); // pps_pic_parameter_set_id
     get_ue_golomb_long(gb); // pps_seq_parameter_set_id
 
-    // dependent_slice_segments_enabled_flag u(1)
-    // output_flag_present_flag              u(1)
-    // num_extra_slice_header_bits           u(3)
-    // sign_data_hiding_enabled_flag         u(1)
-    // cabac_init_present_flag               u(1)
+    /*
+     * dependent_slice_segments_enabled_flag u(1)
+     * output_flag_present_flag              u(1)
+     * num_extra_slice_header_bits           u(3)
+     * sign_data_hiding_enabled_flag         u(1)
+     * cabac_init_present_flag               u(1)
+     */
     skip_bits(gb, 7);
 
     get_ue_golomb_long(gb); // num_ref_idx_l0_default_active_minus1
     get_ue_golomb_long(gb); // num_ref_idx_l1_default_active_minus1
+    get_se_golomb     (gb); // init_qp_minus26
 
-    get_se_golomb(gb); // init_qp_minus26
-
-    // constrained_intra_pred_flag u(1)
-    // transform_skip_enabled_flag u(1)
+    /*
+     * constrained_intra_pred_flag u(1)
+     * transform_skip_enabled_flag u(1)
+     */
     skip_bits(gb, 2);
 
     if (get_bits1(gb))          // cu_qp_delta_enabled_flag
@@ -585,9 +606,11 @@ static int hvcc_parse_pps(GetBitContext *gb,
     get_se_golomb(gb); // pps_cb_qp_offset
     get_se_golomb(gb); // pps_cr_qp_offset
 
-    // weighted_pred_flag               u(1)
-    // weighted_bipred_flag             u(1)
-    // transquant_bypass_enabled_flag   u(1)
+    /*
+     * weighted_pred_flag               u(1)
+     * weighted_bipred_flag             u(1)
+     * transquant_bypass_enabled_flag   u(1)
+     */
     skip_bits(gb, 3);
 
     tiles_enabled_flag               = get_bits1(gb);
@@ -602,7 +625,7 @@ static int hvcc_parse_pps(GetBitContext *gb,
     else
         hvcc->parallelismType = 1; // slice-based parallel decoding
 
-    // nothing useful for hvcC past this point
+    /* nothing useful for hvcC past this point */
     return 0;
 }
 
@@ -616,7 +639,7 @@ static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, uint32_t src_len,
     if (!dst)
         return NULL;
 
-    // always copy the header (2 bytes)
+    /* NAL unit header (2 bytes) */
     i = len = 0;
     while (i < 2 && i < src_len)
         dst[len++] = src[i++];
@@ -644,8 +667,10 @@ static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 
     *nal_type = get_bits(gb, 6);
 
-    // nuh_layer_id          u(6)
-    // nuh_temporal_id_plus1 u(3)
+    /*
+     * nuh_layer_id          u(6)
+     * nuh_temporal_id_plus1 u(3)
+     */
     skip_bits(gb, 9);
 }
 
@@ -875,7 +900,7 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
     /* unsigned int(8) configurationVersion = 1; */
     avio_w8(pb, hvcc->configurationVersion);
 
-    /* 
+    /*
      * unsigned int(2) general_profile_space;
      * unsigned int(1) general_tier_flag;
      * unsigned int(5) general_profile_idc;
