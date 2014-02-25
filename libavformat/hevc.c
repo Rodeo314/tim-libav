@@ -28,6 +28,14 @@
 
 #define MAX_SPATIAL_SEGMENTATION 4096 // max. value of u(12) field
 
+typedef struct HVCCNALUnitArray {
+    uint8_t  array_completeness;
+    uint8_t  NAL_unit_type;
+    uint16_t numNalus;
+    uint16_t *nalUnitLength;
+    uint8_t  **nalUnit;
+} HVCCNALUnitArray;
+
 typedef struct HEVCDecoderConfigurationRecord {
     uint8_t  configurationVersion;
     uint8_t  general_profile_space;
@@ -46,6 +54,8 @@ typedef struct HEVCDecoderConfigurationRecord {
     uint8_t  numTemporalLayers;
     uint8_t  temporalIdNested;
     uint8_t  lengthSizeMinusOne;
+    uint8_t  numOfArrays;
+    HVCCNALUnitArray *array;
 } HEVCDecoderConfigurationRecord;
 
 typedef struct HVCCProfileTierLevel {
@@ -904,22 +914,28 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                         hvcc.temporalIdNested  << 2 |
                         hvcc.lengthSizeMinusOne);
 
-            /*
-             * HEVCDecoderConfigurationRecord: continued
-             *
-             * unsigned int(8)  numOfArrays;
-             *
-             * for (j = 0; j < numOfArrays; j++) {
-             *     bit(1) array_completeness;
-             *     unsigned int(1) reserved = 0;
-             *     unsigned int(6) NAL_unit_type;
-             *     unsigned int(16) numNalus;
-             *     for (i = 0; i < numNalus; i++) {
-             *         unsigned int(16) nalUnitLength;
-             *         bit(8*nalUnitLength) nalUnit;
-             *     }
-             * }
-             */
+            // unsigned int(8) numOfArrays;
+            avio_w8(pb, hvcc.numOfArrays);
+
+            for (int i = 0; i < hvcc.numOfArrays; i++) {
+                // bit(1) array_completeness;
+                // unsigned int(1) reserved = 0;
+                // unsigned int(6) NAL_unit_type;
+                avio_w8(pb, hvcc.array[i].array_completeness << 7 |
+                            hvcc.array[i].NAL_unit_type & 0x3f);
+
+                // unsigned int(16) numNalus;
+                avio_wb16(pb, hvcc.array[i].numNalus);
+
+                for (int j = 0; j < hvcc.array[i].numNalus; j++) {
+                    // unsigned int(16) nalUnitLength;
+                    avio_wb16(pb, hvcc.array[i].nalUnitLength[j]);
+
+                    // bit(8*nalUnitLength) nalUnit;
+                    for (int k = 0; k < hvcc.array[i].nalUnitLength[j]; k++)
+                        avio_w8(pb, hvcc.array[i].nalUnit[j][k]);
+                }
+            }
         } else {
             avio_write(pb, data, len);
         }
