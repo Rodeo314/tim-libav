@@ -78,6 +78,7 @@ static int binar_ize(uint8_t n)
 
 static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
 {
+    int i, j;
     uint8_t *tmp;
     av_log(NULL, AV_LOG_FATAL, "\n");
     av_log(NULL, AV_LOG_FATAL, "hvcc: configurationVersion:                %4"PRIu8"\n",    hvcc->configurationVersion);
@@ -101,6 +102,15 @@ static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
     av_log(NULL, AV_LOG_FATAL, "hvcc: numTemporalLayers:                   %4"PRIu8"\n",    hvcc->numTemporalLayers);
     av_log(NULL, AV_LOG_FATAL, "hvcc: temporalIdNested:                    %4"PRIu8"\n",    hvcc->temporalIdNested);
     av_log(NULL, AV_LOG_FATAL, "hvcc: lengthSizeMinusOne:                  %4"PRIu8"\n",    hvcc->lengthSizeMinusOne);
+    av_log(NULL, AV_LOG_FATAL, "hvcc: numOfArrays:                         %4"PRIu8"\n",    hvcc->numOfArrays);
+    for (i = 0; i < hvcc->numOfArrays; i++) {
+        av_log(NULL, AV_LOG_FATAL, "hvcc: array_completeness[%03d]:                   %4"PRIu8"\n",  i, hvcc->array[i].array_completeness);
+        av_log(NULL, AV_LOG_FATAL, "hvcc: NAL_unit_type[%03d]:                        %4"PRIu8"\n",  i, hvcc->array[i].NAL_unit_type);
+        av_log(NULL, AV_LOG_FATAL, "hvcc: numNalus[%03d]:                             %4"PRIu16"\n", i, hvcc->array[i].numNalus);
+        for (j = 0; j < hvcc->array[i].numNalus; j++) {
+            av_log(NULL, AV_LOG_FATAL, "hvcc: nalUnitLength[%03d][%03d]:                   %4"PRIu16"\n", i, j, hvcc->array[i].nalUnitLength[j]);
+        }
+    }
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
 
