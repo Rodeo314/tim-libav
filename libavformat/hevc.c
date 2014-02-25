@@ -70,7 +70,8 @@ typedef struct HVCCProfileTierLevel {
 static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc);
 static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_add_nal_unit(const uint8_t *nal_buf, int nal_size, HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_add_nal_unit(uint8_t *nal_buf, int nal_size, HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_add_nal_unit_at_index(uint8_t *nal_buf, int nal_size, int nal_type, HEVCDecoderConfigurationRecord *hvcc, int index);
 static int  hvcc_parse_vps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_parse_sps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_parse_pps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
@@ -112,11 +113,12 @@ static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
     av_log(NULL, AV_LOG_FATAL, "hvcc: lengthSizeMinusOne:                  %4"PRIu8"\n",    hvcc->lengthSizeMinusOne);
     av_log(NULL, AV_LOG_FATAL, "hvcc: numOfArrays:                         %4"PRIu8"\n",    hvcc->numOfArrays);
     for (i = 0; i < hvcc->numOfArrays; i++) {
-        av_log(NULL, AV_LOG_FATAL, "hvcc: array_completeness[%03d]:                   %4"PRIu8"\n",  i, hvcc->array[i].array_completeness);
-        av_log(NULL, AV_LOG_FATAL, "hvcc: NAL_unit_type[%03d]:                        %4"PRIu8"\n",  i, hvcc->array[i].NAL_unit_type);
-        av_log(NULL, AV_LOG_FATAL, "hvcc: numNalus[%03d]:                             %4"PRIu16"\n", i, hvcc->array[i].numNalus);
+        av_log(NULL, AV_LOG_FATAL, "\n");
+        av_log(NULL, AV_LOG_FATAL, "hvcc: array_completeness[%03d]:             %4"PRIu8"\n",  i, hvcc->array[i].array_completeness);
+        av_log(NULL, AV_LOG_FATAL, "hvcc: NAL_unit_type[%03d]:                  %4"PRIu8"\n",  i, hvcc->array[i].NAL_unit_type);
+        av_log(NULL, AV_LOG_FATAL, "hvcc: numNalus[%03d]:                       %4"PRIu16"\n", i, hvcc->array[i].numNalus);
         for (j = 0; j < hvcc->array[i].numNalus; j++) {
-            av_log(NULL, AV_LOG_FATAL, "hvcc: nalUnitLength[%03d][%03d]:                   %4"PRIu16"\n", i, j, hvcc->array[i].nalUnitLength[j]);
+            av_log(NULL, AV_LOG_FATAL, "hvcc: nalUnitLength[%03d][%03d]:             %4"PRIu16"\n", i, j, hvcc->array[i].nalUnitLength[j]);
         }
     }
     av_log(NULL, AV_LOG_FATAL, "\n");
@@ -328,7 +330,50 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
     return 0;
 }
 
-static int hvcc_add_nal_unit(const uint8_t *nal_buf, int nal_size,
+static int hvcc_add_nal_unit_at_index(uint8_t *nal_buf, int nal_size, int nal_type,
+                                      HEVCDecoderConfigurationRecord *hvcc, int index)
+{
+    int i, ret;
+    uint16_t numNalusAtIndex;
+    HVCCNALUnitArray *arrayAtIndex;
+
+    if (index >= hvcc->numOfArrays) {
+        ret = av_reallocp_array(&hvcc->array, index + 1,
+                                sizeof(HVCCNALUnitArray));
+        if (ret < 0)
+            return ret;
+
+        /*
+         * Zero the newly-allocated structures, if any,
+         * before updating the count of initialized arrays.
+         */
+        for (i = hvcc->numOfArrays; i <= index; i++)
+            memset(&hvcc->array[i], 0, sizeof(HVCCNALUnitArray));
+        hvcc->numOfArrays = index + 1;
+    }
+
+    arrayAtIndex    = &hvcc->array[index];
+    numNalusAtIndex = arrayAtIndex->numNalus;
+
+    ret = av_reallocp_array(&arrayAtIndex->nalUnit, numNalusAtIndex + 1,
+                            sizeof(uint8_t*));
+    if (ret < 0)
+        return ret;
+
+    ret = av_reallocp_array(&arrayAtIndex->nalUnitLength, numNalusAtIndex + 1,
+                            sizeof(uint16_t));
+    if (ret < 0)
+        return ret;
+
+    arrayAtIndex->nalUnit      [numNalusAtIndex] = nal_buf;
+    arrayAtIndex->nalUnitLength[numNalusAtIndex] = nal_size;
+    arrayAtIndex->NAL_unit_type                  = nal_type;
+    arrayAtIndex->numNalus++;
+
+    return 0;
+}
+
+static int hvcc_add_nal_unit(uint8_t *nal_buf, int nal_size,
                              HEVCDecoderConfigurationRecord *hvcc)
 {
     GetBitContext gbc;
@@ -349,13 +394,32 @@ static int hvcc_add_nal_unit(const uint8_t *nal_buf, int nal_size,
 
     switch (nal_type) {
     case NAL_VPS:
+        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 0);
+        if (ret < 0)
+            goto fail;
         hvcc_parse_vps(&gbc, hvcc);
         break;
     case NAL_SPS:
+        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 1);
+        if (ret < 0)
+            goto fail;
         hvcc_parse_sps(&gbc, hvcc);
         break;
     case NAL_PPS:
+        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 2);
+        if (ret < 0)
+            goto fail;
         hvcc_parse_pps(&gbc, hvcc);
+        break;
+    case NAL_SEI_PREFIX:
+        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 3);
+        if (ret < 0)
+            goto fail;
+        break;
+    case NAL_SEI_SUFFIX:
+        ret = hvcc_add_nal_unit_at_index(nal_buf, nal_size, nal_type, hvcc, 4);
+        if (ret < 0)
+            goto fail;
         break;
     default:
         break;
