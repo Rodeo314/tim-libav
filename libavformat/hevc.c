@@ -66,7 +66,6 @@ static int binar_ize(uint8_t n)
     return ret;
 }
 
-#define HEVC_DEBUG_LOG(str, ...) av_log(NULL, AV_LOG_FATAL, "%s, %s: %d - " str, __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
 static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
 {
     uint8_t *tmp;
@@ -125,41 +124,7 @@ static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, int src_len,
     return dst;
 }
 
-static void dump_nal_full(uint8_t *buf, int size, const char *name)
-{
-    av_log(NULL, AV_LOG_FATAL, "\n");
-    for (int i = 0; i < size; i++) {
-        av_log(NULL, AV_LOG_FATAL, "%s[%2d]: %3d, 0x%02x, %04d %04d\n", name,
-               i, buf[i], buf[i],
-               binar_ize((buf[i] & 0xf0) >> 4),
-               binar_ize((buf[i] & 0x0f)));
-    }
-    av_log(NULL, AV_LOG_FATAL, "\n");
-}
 
-static void dump_nal_rbsp(uint8_t *buf, int size, const char *name)
-{
-    uint8_t *tmp = NULL;
-    int tmp_size = 0;
-
-    tmp = nal_unit_extract_rbsp(buf, size, &tmp_size);
-    if (!tmp)
-        return;
-
-    buf  = tmp;
-    size = tmp_size;
-
-    av_log(NULL, AV_LOG_FATAL, "\n");
-    for (int i = 0; i < size; i++) {
-        av_log(NULL, AV_LOG_FATAL, "%s[%2d]: %3d, 0x%02x, %04d %04d\n", name,
-               i, buf[i], buf[i],
-               binar_ize((buf[i] & 0xf0) >> 4),
-               binar_ize((buf[i] & 0x0f)));
-    }
-    av_log(NULL, AV_LOG_FATAL, "\n");
-
-    av_free(buf);
-}
 
 static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 {
@@ -818,7 +783,6 @@ fail:
 
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
-    HEVC_DEBUG_LOG("data: %p, len: %d\n", data, len);
     if (len > 6) {
         /* check for H.265 start code */
         if (AV_RB32(data) == 0x00000001 || AV_RB24(data) == 0x000001) {
@@ -852,8 +816,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 
                 switch (nal_type) {
                 case NAL_VPS:
-                    dump_nal_full(buf, size, "vps");
-                    dump_nal_rbsp(buf, size, "VPS");
                     vps      = buf;
                     vps_size = size;
                     ret      = hvcc_parse_vps(buf, size, &hvcc);
@@ -861,8 +823,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                         return ret;
                     break;
                 case NAL_SPS:
-                    dump_nal_full(buf, size, "sps");
-                    dump_nal_rbsp(buf, size, "SPS");
                     sps      = buf;
                     sps_size = size;
                     ret      = hvcc_parse_sps(buf, size, &hvcc);
@@ -870,8 +830,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                         return ret;
                     break;
                 case NAL_PPS:
-                    dump_nal_full(buf, size, "pps");
-                    dump_nal_rbsp(buf, size, "PPS");
                     pps      = buf;
                     pps_size = size;
                     ret      = hvcc_parse_pps(buf, size, &hvcc);
@@ -879,7 +837,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                         return ret;
                     break;
                 default:
-                    HEVC_DEBUG_LOG("NAL with type: %d and size: %d\n", nal_type, size);
                     break;
                 }
 
