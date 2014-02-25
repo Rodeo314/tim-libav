@@ -730,12 +730,12 @@ static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
     rbsp_buf = nal_unit_extract_rbsp(nal_buf, nal_size, &rbsp_size);
     if (!rbsp_buf) {
         ret = AVERROR(ENOMEM);
-        goto fail;
+        goto end;
     }
 
     ret = init_get_bits8(&gbc, rbsp_buf, rbsp_size);
     if (ret < 0)
-        goto fail;
+        goto end;
 
     nal_unit_parse_header(&gbc, &nal_type);
 
@@ -747,7 +747,7 @@ static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
     case NAL_SEI_SUFFIX:
         ret = hvcc_array_add_nal_unit(nal_buf, nal_size, nal_type, hvcc);
         if (ret < 0)
-            goto fail;
+            goto end;
         else if (nal_type == NAL_VPS)
             ret = hvcc_parse_vps(&gbc, hvcc);
         else if (nal_type == NAL_SPS)
@@ -755,13 +755,13 @@ static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
         else if (nal_type == NAL_PPS)
             ret = hvcc_parse_pps(&gbc, hvcc);
         if (ret < 0)
-            goto fail;
+            goto end;
         break;
     default:
         break;
     }
 
-fail:
+end:
     av_free(rbsp_buf);
     return ret;
 }
@@ -804,6 +804,11 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
 {
     uint8_t i;
     uint16_t j, k, vps_count = 0, sps_count = 0, pps_count = 0;
+
+    /*
+     * We only support writing HEVCDecoderConfigurationRecord version 1.
+     */
+    hvcc->configurationVersion = 1;
 
     /*
      * If min_spatial_segmentation_idc is invalid, reset to 0 (unspecified).
@@ -993,21 +998,22 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
 
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
+    int ret = 0;
+    HEVCDecoderConfigurationRecord hvcc;
+
+    hvcc_init(&hvcc);
+
     if (len > 6) {
         if (AV_RB32(data) == 1 || AV_RB24(data) == 1) {
             /*
              * NAL unit start code, data is in Annex B
              * format and has to be converted to hvcC.
              */
-            int ret = 0;
             uint8_t *end, *buf = NULL;
-            HEVCDecoderConfigurationRecord hvcc;
-
-            hvcc_init(&hvcc);
 
             ret = ff_avc_parse_nal_units_buf(data, &buf, &len);
             if (ret < 0)
-                goto fail;
+                goto end;
 
             end = buf + len;
 
@@ -1019,20 +1025,20 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 if (size) {
                     ret = hvcc_add_nal_unit(buf, size, &hvcc);
                     if (ret < 0)
-                        goto fail;
+                        goto end;
                 }
 
                 buf += size;
             }
 
             ret = hvcc_write(pb, &hvcc);
-        fail:
-            hvcc_close(&hvcc);
-            return ret;
         } else {
             /* Assume data is already hvcC-formatted */
             avio_write(pb, data, len);
         }
     }
-    return 0;
+
+end:
+    hvcc_close(&hvcc);
+    return ret;
 }
