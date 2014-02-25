@@ -70,8 +70,8 @@ typedef struct HVCCProfileTierLevel {
 static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc);
 static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_add_nal_unit(uint8_t *nal_buf, int nal_size, HEVCDecoderConfigurationRecord *hvcc);
-static int  hvcc_array_add_nal_unit(uint8_t *nal_buf, int nal_size, int nal_type, HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size, HEVCDecoderConfigurationRecord *hvcc);
+static int  hvcc_array_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size, uint8_t nal_type, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_parse_vps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_parse_sps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
 static int  hvcc_parse_pps(GetBitContext *gb, HEVCDecoderConfigurationRecord *hvcc);
@@ -87,7 +87,8 @@ static int binar_ize(uint8_t n)
 
 static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i, j;
+    uint8_t i;
+    uint16_t j;
     uint8_t *tmp;
     av_log(NULL, AV_LOG_FATAL, "\n");
     av_log(NULL, AV_LOG_FATAL, "hvcc: configurationVersion:                %4"PRIu8"\n",    hvcc->configurationVersion);
@@ -124,11 +125,11 @@ static void dump_hvcc(HEVCDecoderConfigurationRecord *hvcc)
     av_log(NULL, AV_LOG_FATAL, "\n");
 }
 
-static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, int src_len,
-                                      int *dst_len)
+static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, uint32_t src_len,
+                                      uint32_t *dst_len)
 {
-    int i, len;
     uint8_t *dst;
+    uint32_t i, len;
 
     dst = av_malloc(src_len);
     if (!dst)
@@ -156,7 +157,7 @@ static uint8_t *nal_unit_extract_rbsp(const uint8_t *src, int src_len,
 
 
 
-static void nal_unit_parse_header(GetBitContext *gb, int *nal_type)
+static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 {
     skip_bits1(gb); // forbidden_zero_bit
 
@@ -189,7 +190,7 @@ static void hvcc_init(HEVCDecoderConfigurationRecord *hvcc)
 
 static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i;
+    uint8_t i;
 
     for (i = 0; i < hvcc->numOfArrays; i++) {
         hvcc->array[i].numNalus = 0;
@@ -203,10 +204,8 @@ static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc)
 
 static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i;
-    uint16_t vps_count = 0, sps_count = 0, pps_count = 0;
-    //fixme
-    ++vps_count; ++sps_count; ++pps_count;
+    uint8_t i;
+    uint16_t j, k, vps_count = 0, sps_count = 0, pps_count = 0;
 
     /*
      * We need at least one of each: VPS, SPS and PPS.
@@ -306,7 +305,7 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
     // unsigned int(8) numOfArrays;
     avio_w8(pb, hvcc->numOfArrays);
 
-    for (int i = 0; i < hvcc->numOfArrays; i++) {
+    for (i = 0; i < hvcc->numOfArrays; i++) {
         // bit(1) array_completeness;
         // unsigned int(1) reserved = 0;
         // unsigned int(6) NAL_unit_type;
@@ -316,12 +315,12 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
         // unsigned int(16) numNalus;
         avio_wb16(pb, hvcc->array[i].numNalus);
 
-        for (int j = 0; j < hvcc->array[i].numNalus; j++) {
+        for (j = 0; j < hvcc->array[i].numNalus; j++) {
             // unsigned int(16) nalUnitLength;
             avio_wb16(pb, hvcc->array[i].nalUnitLength[j]);
 
             // bit(8*nalUnitLength) nalUnit;
-            for (int k = 0; k < hvcc->array[i].nalUnitLength[j]; k++)
+            for (k = 0; k < hvcc->array[i].nalUnitLength[j]; k++)
                 avio_w8(pb, hvcc->array[i].nalUnit[j][k]);
         }
     }
@@ -330,10 +329,12 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
     return 0;
 }
 
-static int hvcc_array_add_nal_unit(uint8_t *nal_buf, int nal_size, int nal_type,
+static int hvcc_array_add_nal_unit(uint8_t *nal_buf,
+                                   uint32_t nal_size, uint8_t nal_type,
                                    HEVCDecoderConfigurationRecord *hvcc)
 {
-    int index, ret;
+    int ret;
+    uint8_t index;
     uint16_t numNalus;
     HVCCNALUnitArray *array;
 
@@ -342,7 +343,7 @@ static int hvcc_array_add_nal_unit(uint8_t *nal_buf, int nal_size, int nal_type,
             break;
 
     if (index >= hvcc->numOfArrays) {
-        int i;
+        uint8_t i;
 
         ret = av_reallocp_array(&hvcc->array, index + 1, sizeof(HVCCNALUnitArray));
         if (ret < 0)
@@ -372,12 +373,14 @@ static int hvcc_array_add_nal_unit(uint8_t *nal_buf, int nal_size, int nal_type,
     return 0;
 }
 
-static int hvcc_add_nal_unit(uint8_t *nal_buf, int nal_size,
+static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
                              HEVCDecoderConfigurationRecord *hvcc)
 {
+    int ret = 0;
     GetBitContext gbc;
+    uint8_t nal_type;
     uint8_t *rbsp_buf;
-    int rbsp_size, nal_type, ret = 0;
+    uint32_t rbsp_size;
 
     rbsp_buf = nal_unit_extract_rbsp(nal_buf, nal_size, &rbsp_size);
     if (!rbsp_buf) {
@@ -475,9 +478,9 @@ static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
 
 static void hvcc_parse_ptl(GetBitContext *gb,
                            HEVCDecoderConfigurationRecord *hvcc,
-                           int max_sub_layers_minus1)
+                           unsigned int max_sub_layers_minus1)
 {
-    int i;
+    unsigned int i;
     HVCCProfileTierLevel general_ptl;
     uint8_t sub_layer_profile_present_flag[MAX_SUB_LAYERS];
     uint8_t sub_layer_level_present_flag[MAX_SUB_LAYERS];
@@ -520,27 +523,29 @@ static void hvcc_parse_ptl(GetBitContext *gb,
     }
 }
 
-static void skip_sub_layer_hrd_parameters(GetBitContext *gb, int cpb_cnt_minus1,
-                                          int sub_pic_hrd_params_present_flag)
+static void skip_sub_layer_hrd_parameters(GetBitContext *gb,
+                                          unsigned int cpb_cnt_minus1,
+                                          uint8_t sub_pic_hrd_params_present_flag)
 {
-    int i;
+    unsigned int i;
 
     for (i = 0; i <= cpb_cnt_minus1; i++) {
-        get_ue_golomb(gb); // bit_rate_value_minus1
-        get_ue_golomb(gb); // cpb_size_value_minus1
+        get_ue_golomb_long(gb); // bit_rate_value_minus1
+        get_ue_golomb_long(gb); // cpb_size_value_minus1
 
         if (sub_pic_hrd_params_present_flag) {
-            get_ue_golomb(gb); // cpb_size_du_value_minus1
-            get_ue_golomb(gb); // bit_rate_du_value_minus1
+            get_ue_golomb_long(gb); // cpb_size_du_value_minus1
+            get_ue_golomb_long(gb); // bit_rate_du_value_minus1
         }
         skip_bits1(gb); // cbr_flag
     }
 }
 
-static void skip_hrd_parameters(GetBitContext *gb, int common_inf_present_flag,
-                                int max_sub_layers_minus1)
+static void skip_hrd_parameters(GetBitContext *gb,
+                                uint8_t common_inf_present_flag,
+                                unsigned int max_sub_layers_minus1)
 {
-    int i;
+    unsigned int i;
     uint8_t sub_pic_hrd_params_present_flag = 0;
     uint8_t nal_hrd_parameters_present_flag = 0;
     uint8_t vcl_hrd_parameters_present_flag = 0;
@@ -575,21 +580,21 @@ static void skip_hrd_parameters(GetBitContext *gb, int common_inf_present_flag,
     }
 
     for (i = 0; i <= max_sub_layers_minus1; i++) {
-        int cpb_cnt_minus1                 = 0;
-        int low_delay_hrd_flag             = 0;
-        int fixed_pic_rate_within_cvs_flag = 0;
-        int fixed_pic_rate_general_flag    = get_bits1(gb);
+        unsigned int cpb_cnt_minus1            = 0;
+        uint8_t low_delay_hrd_flag             = 0;
+        uint8_t fixed_pic_rate_within_cvs_flag = 0;
+        uint8_t fixed_pic_rate_general_flag    = get_bits1(gb);
 
         if (!fixed_pic_rate_general_flag)
             fixed_pic_rate_within_cvs_flag = get_bits1(gb);
 
         if (fixed_pic_rate_within_cvs_flag)
-            get_ue_golomb(gb); // elemental_duration_in_tc_minus1
+            get_ue_golomb_long(gb); // elemental_duration_in_tc_minus1
         else
             low_delay_hrd_flag = get_bits1(gb);
 
         if (!low_delay_hrd_flag)
-            cpb_cnt_minus1 = get_ue_golomb(gb);
+            cpb_cnt_minus1 = get_ue_golomb_long(gb);
 
         if (nal_hrd_parameters_present_flag)
             skip_sub_layer_hrd_parameters(gb, cpb_cnt_minus1,
@@ -612,9 +617,9 @@ static void skip_timing_info(GetBitContext *gb)
 
 static void hvcc_parse_vui(GetBitContext *gb,
                            HEVCDecoderConfigurationRecord *hvcc,
-                           int max_sub_layers_minus1)
+                           unsigned int max_sub_layers_minus1)
 {
-    int min_spatial_segmentation_idc;
+    unsigned int min_spatial_segmentation_idc;
 
     if (get_bits1(gb))              // aspect_ratio_info_present_flag
         if (get_bits(gb, 8) == 255) // aspect_ratio_idc
@@ -633,9 +638,9 @@ static void hvcc_parse_vui(GetBitContext *gb,
             skip_bits(gb, 24);
     }
 
-    if (get_bits1(gb)) {   // chroma_loc_info_present_flag
-        get_ue_golomb(gb); // chroma_sample_loc_type_top_field
-        get_ue_golomb(gb); // chroma_sample_loc_type_bottom_field
+    if (get_bits1(gb)) {        // chroma_loc_info_present_flag
+        get_ue_golomb_long(gb); // chroma_sample_loc_type_top_field
+        get_ue_golomb_long(gb); // chroma_sample_loc_type_bottom_field
     }
 
     // neutral_chroma_indication_flag u(1)
@@ -643,11 +648,11 @@ static void hvcc_parse_vui(GetBitContext *gb,
     // frame_field_info_present_flag  u(1)
     skip_bits(gb, 3);
 
-    if (get_bits1(gb)) {   // default_display_window_flag
-        get_ue_golomb(gb); // def_disp_win_left_offset
-        get_ue_golomb(gb); // def_disp_win_right_offset
-        get_ue_golomb(gb); // def_disp_win_top_offset
-        get_ue_golomb(gb); // def_disp_win_bottom_offset
+    if (get_bits1(gb)) {        // default_display_window_flag
+        get_ue_golomb_long(gb); // def_disp_win_left_offset
+        get_ue_golomb_long(gb); // def_disp_win_right_offset
+        get_ue_golomb_long(gb); // def_disp_win_top_offset
+        get_ue_golomb_long(gb); // def_disp_win_bottom_offset
     }
 
     if (get_bits1(gb)) { // vui_timing_info_present_flag
@@ -663,7 +668,7 @@ static void hvcc_parse_vui(GetBitContext *gb,
         // restricted_ref_pic_lists_flag           u(1)
         skip_bits(gb, 3);
 
-        min_spatial_segmentation_idc = get_ue_golomb(gb);
+        min_spatial_segmentation_idc = get_ue_golomb_long(gb);
 
         /*
          * unsigned int(12) min_spatial_segmentation_idc;
@@ -675,24 +680,24 @@ static void hvcc_parse_vui(GetBitContext *gb,
         hvcc->min_spatial_segmentation_idc = FFMIN(hvcc->min_spatial_segmentation_idc,
                                                    min_spatial_segmentation_idc);
 
-        get_ue_golomb(gb); // max_bytes_per_pic_denom
-        get_ue_golomb(gb); // max_bits_per_min_cu_denom
-        get_ue_golomb(gb); // log2_max_mv_length_horizontal
-        get_ue_golomb(gb); // log2_max_mv_length_vertical
+        get_ue_golomb_long(gb); // max_bytes_per_pic_denom
+        get_ue_golomb_long(gb); // max_bits_per_min_cu_denom
+        get_ue_golomb_long(gb); // log2_max_mv_length_horizontal
+        get_ue_golomb_long(gb); // log2_max_mv_length_vertical
     }
 }
 
 static void skip_sub_layer_ordering_info(GetBitContext *gb)
 {
-    get_ue_golomb(gb); // max_dec_pic_buffering_minus1
-    get_ue_golomb(gb); // max_num_reorder_pics
-    get_ue_golomb(gb); // max_latency_increase_plus1
+    get_ue_golomb_long(gb); // max_dec_pic_buffering_minus1
+    get_ue_golomb_long(gb); // max_num_reorder_pics
+    get_ue_golomb_long(gb); // max_latency_increase_plus1
 }
 
 static int hvcc_parse_vps(GetBitContext *gb,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int vps_max_sub_layers_minus1;
+    unsigned int vps_max_sub_layers_minus1;
 
     // vps_video_parameter_set_id u(4)
     // vps_reserved_three_2bits   u(2)
@@ -728,8 +733,8 @@ static void skip_scaling_list_data(GetBitContext *gb)
 
     for (i = 0; i < 4; i++)
         for (j = 0; j < (i == 3 ? 2 : 6); j++)
-            if (!get_bits1(gb))    // scaling_list_pred_mode_flag[i][j]
-                get_ue_golomb(gb); // scaling_list_pred_matrix_id_delta[i][j]
+            if (!get_bits1(gb))         // scaling_list_pred_mode_flag[i][j]
+                get_ue_golomb_long(gb); // scaling_list_pred_matrix_id_delta[i][j]
             else {
                 num_coeffs = FFMIN(64, 1 << (4 + (i << 1)));
 
@@ -741,18 +746,20 @@ static void skip_scaling_list_data(GetBitContext *gb)
             }
 }
 
-static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
-                     int num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT])
+static int parse_rps(GetBitContext *gb,
+                     unsigned int rps_idx,
+                     unsigned int num_rps,
+                     unsigned int num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT])
 {
-    int i;
+    unsigned int i;
 
     if (rps_idx && get_bits1(gb)) { // inter_ref_pic_set_prediction_flag
         // this should only happen for slice headers, and this isn't one
         if (rps_idx >= num_rps)
             return AVERROR_INVALIDDATA;
 
-        skip_bits1   (gb); // delta_rps_sign
-        get_ue_golomb(gb); // abs_delta_rps_minus1
+        skip_bits1        (gb); // delta_rps_sign
+        get_ue_golomb_long(gb); // abs_delta_rps_minus1
 
         num_delta_pocs[rps_idx] = 0;
 
@@ -785,19 +792,19 @@ static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
                 num_delta_pocs[rps_idx]++;
         }
     } else {
-        int num_negative_pics = get_ue_golomb(gb);
-        int num_positive_pics = get_ue_golomb(gb);
+        unsigned int num_negative_pics = get_ue_golomb_long(gb);
+        unsigned int num_positive_pics = get_ue_golomb_long(gb);
 
         num_delta_pocs[rps_idx] = num_negative_pics + num_positive_pics;
 
         for (i = 0; i < num_negative_pics; i++) {
-            get_ue_golomb(gb); // delta_poc_s0_minus1[rps_idx]
-            skip_bits1   (gb); // used_by_curr_pic_s0_flag[rps_idx]
+            get_ue_golomb_long(gb); // delta_poc_s0_minus1[rps_idx]
+            skip_bits1        (gb); // used_by_curr_pic_s0_flag[rps_idx]
         }
 
         for (i = 0; i < num_positive_pics; i++) {
-            get_ue_golomb(gb); // delta_poc_s1_minus1[rps_idx]
-            skip_bits1   (gb); // used_by_curr_pic_s1_flag[rps_idx]
+            get_ue_golomb_long(gb); // delta_poc_s1_minus1[rps_idx]
+            skip_bits1        (gb); // used_by_curr_pic_s1_flag[rps_idx]
         }
     }
 
@@ -807,9 +814,8 @@ static int parse_rps(GetBitContext *gb, int rps_idx, int num_rps,
 static int hvcc_parse_sps(GetBitContext *gb,
                           HEVCDecoderConfigurationRecord *hvcc)
 {
-    int i;
-    int sps_max_sub_layers_minus1, log2_max_pic_order_cnt_lsb_minus4;
-    int num_short_term_ref_pic_sets, num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT];
+    unsigned int i, sps_max_sub_layers_minus1, log2_max_pic_order_cnt_lsb_minus4;
+    unsigned int num_short_term_ref_pic_sets, num_delta_pocs[MAX_SHORT_TERM_RPS_COUNT];
 
     skip_bits(gb, 4); // sps_video_parameter_set_id
 
@@ -830,38 +836,38 @@ static int hvcc_parse_sps(GetBitContext *gb,
 
     hvcc_parse_ptl(gb, hvcc, sps_max_sub_layers_minus1);
 
-    get_ue_golomb(gb); // sps_seq_parameter_set_id
+    get_ue_golomb_long(gb); // sps_seq_parameter_set_id
 
-    hvcc->chromaFormat = get_ue_golomb(gb);
+    hvcc->chromaFormat = get_ue_golomb_long(gb);
 
     if (hvcc->chromaFormat == 3)
         skip_bits1(gb); // separate_colour_plane_flag
 
-    get_ue_golomb(gb); // pic_width_in_luma_samples
-    get_ue_golomb(gb); // pic_height_in_luma_samples
+    get_ue_golomb_long(gb); // pic_width_in_luma_samples
+    get_ue_golomb_long(gb); // pic_height_in_luma_samples
 
-    if (get_bits1(gb)) {   // conformance_window_flag
-        get_ue_golomb(gb); // conf_win_left_offset
-        get_ue_golomb(gb); // conf_win_right_offset
-        get_ue_golomb(gb); // conf_win_top_offset
-        get_ue_golomb(gb); // conf_win_bottom_offset
+    if (get_bits1(gb)) {        // conformance_window_flag
+        get_ue_golomb_long(gb); // conf_win_left_offset
+        get_ue_golomb_long(gb); // conf_win_right_offset
+        get_ue_golomb_long(gb); // conf_win_top_offset
+        get_ue_golomb_long(gb); // conf_win_bottom_offset
     }
 
-    hvcc->bitDepthLumaMinus8          = get_ue_golomb(gb);
-    hvcc->bitDepthChromaMinus8        = get_ue_golomb(gb);
-    log2_max_pic_order_cnt_lsb_minus4 = get_ue_golomb(gb);
+    hvcc->bitDepthLumaMinus8          = get_ue_golomb_long(gb);
+    hvcc->bitDepthChromaMinus8        = get_ue_golomb_long(gb);
+    log2_max_pic_order_cnt_lsb_minus4 = get_ue_golomb_long(gb);
 
     // sps_sub_layer_ordering_info_present_flag
     i = get_bits1(gb) ? 0 : sps_max_sub_layers_minus1;
     for (; i <= sps_max_sub_layers_minus1; i++)
         skip_sub_layer_ordering_info(gb);
 
-    get_ue_golomb(gb); // log2_min_luma_coding_block_size_minus3
-    get_ue_golomb(gb); // log2_diff_max_min_luma_coding_block_size
-    get_ue_golomb(gb); // log2_min_transform_block_size_minus2
-    get_ue_golomb(gb); // log2_diff_max_min_transform_block_size
-    get_ue_golomb(gb); // max_transform_hierarchy_depth_inter
-    get_ue_golomb(gb); // max_transform_hierarchy_depth_intra
+    get_ue_golomb_long(gb); // log2_min_luma_coding_block_size_minus3
+    get_ue_golomb_long(gb); // log2_diff_max_min_luma_coding_block_size
+    get_ue_golomb_long(gb); // log2_min_transform_block_size_minus2
+    get_ue_golomb_long(gb); // log2_diff_max_min_transform_block_size
+    get_ue_golomb_long(gb); // max_transform_hierarchy_depth_inter
+    get_ue_golomb_long(gb); // max_transform_hierarchy_depth_intra
 
     if (get_bits1(gb) && // scaling_list_enabled_flag
         get_bits1(gb))   // sps_scaling_list_data_present_flag
@@ -870,15 +876,15 @@ static int hvcc_parse_sps(GetBitContext *gb,
     skip_bits1(gb); // amp_enabled_flag
     skip_bits1(gb); // sample_adaptive_offset_enabled_flag
 
-    if (get_bits1(gb)) {      // pcm_enabled_flag
-        skip_bits    (gb, 4); // pcm_sample_bit_depth_luma_minus1
-        skip_bits    (gb, 4); // pcm_sample_bit_depth_chroma_minus1
-        get_ue_golomb(gb);    // log2_min_pcm_luma_coding_block_size_minus3
-        get_ue_golomb(gb);    // log2_diff_max_min_pcm_luma_coding_block_size
-        skip_bits1   (gb);    // pcm_loop_filter_disabled_flag
+    if (get_bits1(gb)) {           // pcm_enabled_flag
+        skip_bits         (gb, 4); // pcm_sample_bit_depth_luma_minus1
+        skip_bits         (gb, 4); // pcm_sample_bit_depth_chroma_minus1
+        get_ue_golomb_long(gb);    // log2_min_pcm_luma_coding_block_size_minus3
+        get_ue_golomb_long(gb);    // log2_diff_max_min_pcm_luma_coding_block_size
+        skip_bits1        (gb);    // pcm_loop_filter_disabled_flag
     }
 
-    num_short_term_ref_pic_sets = get_ue_golomb(gb);
+    num_short_term_ref_pic_sets = get_ue_golomb_long(gb);
     if (num_short_term_ref_pic_sets > MAX_SHORT_TERM_RPS_COUNT)
         return AVERROR_INVALIDDATA;
 
@@ -888,8 +894,8 @@ static int hvcc_parse_sps(GetBitContext *gb,
             return ret;
     }
 
-    if (get_bits1(gb)) {                          // long_term_ref_pics_present_flag
-        for (i = 0; i < get_ue_golomb(gb); i++) { // num_long_term_ref_pics_sps
+    if (get_bits1(gb)) {                               // long_term_ref_pics_present_flag
+        for (i = 0; i < get_ue_golomb_long(gb); i++) { // num_long_term_ref_pics_sps
             int len = FFMIN(log2_max_pic_order_cnt_lsb_minus4 + 4, 16);
             skip_bits (gb, len); // lt_ref_pic_poc_lsb_sps[i]
             skip_bits1(gb);      // used_by_curr_pic_lt_sps_flag[i]
@@ -911,8 +917,8 @@ static int hvcc_parse_pps(GetBitContext *gb,
 {
     uint8_t tiles_enabled_flag, entropy_coding_sync_enabled_flag;
 
-    get_ue_golomb(gb); // pps_pic_parameter_set_id
-    get_ue_golomb(gb); // pps_seq_parameter_set_id
+    get_ue_golomb_long(gb); // pps_pic_parameter_set_id
+    get_ue_golomb_long(gb); // pps_seq_parameter_set_id
 
     // dependent_slice_segments_enabled_flag u(1)
     // output_flag_present_flag              u(1)
@@ -921,8 +927,8 @@ static int hvcc_parse_pps(GetBitContext *gb,
     // cabac_init_present_flag               u(1)
     skip_bits(gb, 7);
 
-    get_ue_golomb(gb); // num_ref_idx_l0_default_active_minus1
-    get_ue_golomb(gb); // num_ref_idx_l1_default_active_minus1
+    get_ue_golomb_long(gb); // num_ref_idx_l0_default_active_minus1
+    get_ue_golomb_long(gb); // num_ref_idx_l1_default_active_minus1
 
     get_se_golomb(gb); // init_qp_minus26
 
@@ -930,8 +936,8 @@ static int hvcc_parse_pps(GetBitContext *gb,
     // transform_skip_enabled_flag u(1)
     skip_bits(gb, 2);
 
-    if (get_bits1(gb))     // cu_qp_delta_enabled_flag
-        get_ue_golomb(gb); // diff_cu_qp_delta_depth
+    if (get_bits1(gb))          // cu_qp_delta_enabled_flag
+        get_ue_golomb_long(gb); // diff_cu_qp_delta_depth
 
     get_se_golomb(gb); // pps_cb_qp_offset
     get_se_golomb(gb); // pps_cr_qp_offset
