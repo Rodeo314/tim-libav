@@ -44,6 +44,7 @@ typedef struct libx265Context {
     char *preset;
     char *tune;
     char *x265_opts;
+    char *profile;
 } libx265Context;
 
 static int binar_ize(uint8_t n)
@@ -182,6 +183,11 @@ static av_cold int libx265_encode_init(AVCodecContext *avctx)
             }
             av_dict_free(&dict);
         }
+    }
+
+    if (x265_param_apply_profile(ctx->params, ctx->profile) < 0) {
+        av_log(avctx, AV_LOG_ERROR, "Invalid profile.\n");
+        return AVERROR(EINVAL);
     }
 
     ctx->encoder = x265_encoder_open(ctx->params);
@@ -352,6 +358,7 @@ static const AVOption options[] = {
     { "preset",      "set the x265 preset",                                                         OFFSET(preset),    AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { "tune",        "set the x265 tune parameter",                                                 OFFSET(tune),      AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { "x265-params", "set the x265 configuration using a :-separated list of key=value parameters", OFFSET(x265_opts), AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
+    { "profile",     "set the x265 profile",                                                        OFFSET(profile),   AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { NULL }
 };
 
