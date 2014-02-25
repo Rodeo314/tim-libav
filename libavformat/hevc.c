@@ -191,8 +191,23 @@ static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc)
     av_freep(&hvcc->array);
 }
 
-static void hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
+static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
 {
+    int i;
+
+    /*
+     * We need at least one of each: VPS, SPS and PPS.
+     */
+    if (hvcc->numOfArrays < 3 && 0)//fixme
+        return AVERROR_INVALIDDATA;
+    for (i = 0; i < hvcc->numOfArrays; i++)
+        if (!hvcc->array[i].numNalus && 0 &&//fixme
+            (hvcc->array[i].NAL_unit_type == NAL_VPS ||
+             hvcc->array[i].NAL_unit_type == NAL_SPS ||
+             hvcc->array[i].NAL_unit_type == NAL_PPS))
+            return AVERROR_INVALIDDATA;
+
+
     /*
      * If min_spatial_segmentation_idc is invalid, reset to 0 (unspecified).
      */
@@ -288,6 +303,9 @@ static void hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
                 avio_w8(pb, hvcc->array[i].nalUnit[j][k]);
         }
     }
+
+    dump_hvcc (hvcc);//fixme
+    return 0;
 }
 
 static void hvcc_update_ptl(HEVCDecoderConfigurationRecord *hvcc,
@@ -896,22 +914,24 @@ fail:
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
     if (len > 6) {
-        /* check for H.265 start code */
-        if (AV_RB32(data) == 0x00000001 || AV_RB24(data) == 0x000001) {
+        if (AV_RB32(data) == 1 || AV_RB24(data) == 1) {
+            /*
+             * NAL unit start code, data is in Annex B
+             * format and has to be converted to hvcC.
+             */
+            int ret;
             uint8_t *end;
             HEVCDecoderConfigurationRecord hvcc;
             uint32_t vps_size = 0, sps_size = 0, pps_size = 0;
             uint8_t *buf = NULL, *vps = NULL, *sps = NULL, *pps = NULL;
 
-            int ret = ff_avc_parse_nal_units_buf(data, &buf, &len);
+            ret = ff_avc_parse_nal_units_buf(data, &buf, &len);
             if (ret < 0)
                 return ret;
 
             end = buf + len;
-
             hvcc_init(&hvcc);
 
-            /* look for vps, sps and pps */
             while (end - buf > 4) {
                 int ret;
                 uint32_t size = FFMIN(AV_RB32(buf), end - buf - 4);
@@ -947,16 +967,12 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
                 buf += size;
             }
 
-            if (!vps || vps_size > UINT16_MAX ||
-                !sps || sps_size > UINT16_MAX ||
-                !pps || pps_size > UINT16_MAX) {
-                return AVERROR_INVALIDDATA;
-            }
-
-            hvcc_write(pb, &hvcc);
-            dump_hvcc (&hvcc);//fixme
+            ret = hvcc_write(pb, &hvcc);
             hvcc_close(&hvcc);
+            if (ret < 0)
+                return ret;
         } else {
+            /* Assume data is already hvcC-formatted */
             avio_write(pb, data, len);
         }
     }
