@@ -1160,6 +1160,7 @@ static void mkv_write_block(AVFormatContext *s, AVIOContext *pb,
     av_log(s, AV_LOG_DEBUG, "Writing block at offset %" PRIu64 ", size %d, "
            "pts %" PRId64 ", dts %" PRId64 ", duration %d, flags %d\n",
            avio_tell(pb), pkt->size, pkt->pts, pkt->dts, pkt->duration, flags);
+
     if ((codec->codec_id == AV_CODEC_ID_H264 ||
          codec->codec_id == AV_CODEC_ID_HEVC) &&
         codec->extradata_size > 0 && (AV_RB24(codec->extradata) == 1 ||
