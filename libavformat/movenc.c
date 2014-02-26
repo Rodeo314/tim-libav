@@ -30,6 +30,7 @@
 #include "avio.h"
 #include "isom.h"
 #include "avc.h"
+#include "hevc.h"
 #include "libavcodec/get_bits.h"
 #include "libavcodec/put_bits.h"
 #include "libavcodec/vc1.h"
@@ -685,6 +686,16 @@ static int mov_write_avcc_tag(AVIOContext *pb, MOVTrack *track)
     return update_size(pb, pos);
 }
 
+static int mov_write_hvcc_tag(AVIOContext *pb, MOVTrack *track)
+{
+    int64_t pos = avio_tell(pb);
+
+    avio_wb32(pb, 0);
+    ffio_wfourcc(pb, "hvcC");
+    ff_isom_write_hvcc(pb, track->vos_data, track->vos_len);
+    return update_size(pb, pos);
+}
+
 /* also used by all avid codecs (dv, imx, meridien) and their variants */
 static int mov_write_avid_tag(AVIOContext *pb, MOVTrack *track)
 {
@@ -741,6 +752,7 @@ static int mp4_get_codec_tag(AVFormatContext *s, MOVTrack *track)
         return 0;
 
     if      (track->enc->codec_id == AV_CODEC_ID_H264)      tag = MKTAG('a','v','c','1');
+    else if (track->enc->codec_id == AV_CODEC_ID_HEVC)      tag = MKTAG('h','v','c','1');
     else if (track->enc->codec_id == AV_CODEC_ID_AC3)       tag = MKTAG('a','c','-','3');
     else if (track->enc->codec_id == AV_CODEC_ID_DIRAC)     tag = MKTAG('d','r','a','c');
     else if (track->enc->codec_id == AV_CODEC_ID_MOV_TEXT)  tag = MKTAG('t','x','3','g');
@@ -1035,6 +1047,8 @@ static int mov_write_video_tag(AVIOContext *pb, MOVTrack *track)
         mov_write_svq3_tag(pb);
     else if (track->enc->codec_id == AV_CODEC_ID_DNXHD)
         mov_write_avid_tag(pb, track);
+    else if (track->enc->codec_id == AV_CODEC_ID_HEVC)
+        mov_write_hvcc_tag(pb, track);
     else if (track->enc->codec_id == AV_CODEC_ID_H264) {
         mov_write_avcc_tag(pb, track);
         if (track->mode == MODE_IPOD)
@@ -2915,8 +2929,9 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
         memcpy(trk->vos_data, enc->extradata, trk->vos_len);
     }
 
-    if (enc->codec_id == AV_CODEC_ID_H264 && trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {
-        /* from x264 or from bytestream h264 */
+    if ((enc->codec_id == AV_CODEC_ID_H264 || enc->codec_id == AV_CODEC_ID_HEVC) &&
+        trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {
+        /* from x264/x265 or bytestream h264/hevc */
         /* nal reformating needed */
         if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
             ff_avc_parse_nal_units_buf(pkt->data, &reformatted_data,

@@ -25,6 +25,7 @@
 #include "avformat.h"
 #include "avlanguage.h"
 #include "flacenc.h"
+#include "hevc.h"
 #include "internal.h"
 #include "isom.h"
 #include "matroska.h"
@@ -500,6 +501,8 @@ static int mkv_write_codecprivate(AVFormatContext *s, AVIOContext *pb, AVCodecCo
             ret = put_wv_codecpriv(dyn_cp, codec);
         else if (codec->codec_id == AV_CODEC_ID_H264)
             ret = ff_isom_write_avcc(dyn_cp, codec->extradata, codec->extradata_size);
+        else if (codec->codec_id == AV_CODEC_ID_HEVC)
+            ret = ff_isom_write_hvcc(dyn_cp, codec->extradata, codec->extradata_size);
         else if (codec->codec_id == AV_CODEC_ID_ALAC) {
             if (codec->extradata_size < 36) {
                 av_log(s, AV_LOG_ERROR,
@@ -1157,8 +1160,11 @@ static void mkv_write_block(AVFormatContext *s, AVIOContext *pb,
     av_log(s, AV_LOG_DEBUG, "Writing block at offset %" PRIu64 ", size %d, "
            "pts %" PRId64 ", dts %" PRId64 ", duration %d, flags %d\n",
            avio_tell(pb), pkt->size, pkt->pts, pkt->dts, pkt->duration, flags);
-    if (codec->codec_id == AV_CODEC_ID_H264 && codec->extradata_size > 0 &&
-        (AV_RB24(codec->extradata) == 1 || AV_RB32(codec->extradata) == 1))
+
+    if ((codec->codec_id == AV_CODEC_ID_H264 ||
+         codec->codec_id == AV_CODEC_ID_HEVC) &&
+        codec->extradata_size > 0 && (AV_RB24(codec->extradata) == 1 ||
+                                      AV_RB32(codec->extradata) == 1))
         ff_avc_parse_nal_units_buf(pkt->data, &data, &size);
     else if (codec->codec_id == AV_CODEC_ID_WAVPACK) {
         int ret = mkv_strip_wavpack(pkt->data, &data, &size);
