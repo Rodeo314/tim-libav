@@ -184,6 +184,7 @@ static void skip_sub_layer_hrd_parameters(GetBitContext *gb,
             get_ue_golomb_long(gb); // cpb_size_du_value_minus1
             get_ue_golomb_long(gb); // bit_rate_du_value_minus1
         }
+
         skip_bits1(gb); // cbr_flag
     }
 }
