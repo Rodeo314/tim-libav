@@ -694,7 +694,6 @@ static int mov_write_hvcc_tag(AVIOContext *pb, MOVTrack *track)
     ffio_wfourcc(pb, "hvcC");
     ff_isom_write_hvcc(pb, track->vos_data, track->vos_len);
     return update_size(pb, pos);
-    //fixme: is this really it?
 }
 
 /* also used by all avid codecs (dv, imx, meridien) and their variants */
