@@ -818,7 +818,7 @@ static void hvcc_close(HEVCDecoderConfigurationRecord *hvcc)
 static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
 {
     uint8_t i;
-    uint16_t j, k, vps_count = 0, sps_count = 0, pps_count = 0;
+    uint16_t j, vps_count = 0, sps_count = 0, pps_count = 0;
 
     /*
      * We only support writing HEVCDecoderConfigurationRecord version 1.
@@ -1003,8 +1003,8 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
             avio_wb16(pb, hvcc->array[i].nalUnitLength[j]);
 
             /* bit(8*nalUnitLength) nalUnit; */
-            for (k = 0; k < hvcc->array[i].nalUnitLength[j]; k++)
-                avio_w8(pb, hvcc->array[i].nalUnit[j][k]);
+            avio_write(pb, hvcc->array[i].nalUnit[j],
+                       hvcc->array[i].nalUnitLength[j]);
         }
     }
 
