@@ -1014,6 +1014,7 @@ static int hvcc_write(AVIOContext *pb, HEVCDecoderConfigurationRecord *hvcc)
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 {
     int ret = 0;
+    uint8_t *start = NULL;
     HEVCDecoderConfigurationRecord hvcc;
 
     hvcc_init(&hvcc);
@@ -1030,7 +1031,8 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
             if (ret < 0)
                 goto end;
 
-            end = buf + len;
+            start = buf;
+            end   = buf + len;
 
             while (end - buf > 4) {
                 uint32_t size = FFMIN(AV_RB32(buf), end - buf - 4);
@@ -1055,5 +1057,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len)
 
 end:
     hvcc_close(&hvcc);
+    av_free(start);
     return ret;
 }
