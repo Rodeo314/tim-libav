@@ -622,7 +622,7 @@ int av_is_qsv_available(mfxIMPL impl, mfxVersion * ver)
     return sts;
 }
 
-void av_qsv_wait_on_sync(av_qsv_context *qsv, av_qsv_stage *stage)
+int av_qsv_wait_on_sync(av_qsv_context *qsv, av_qsv_stage *stage)
 {
     int iter = 0;
     mfxStatus sts = MFX_ERR_NONE;
@@ -643,4 +643,5 @@ void av_qsv_wait_on_sync(av_qsv_context *qsv, av_qsv_stage *stage)
                 break;
             }
         }
+    return sts;
 }

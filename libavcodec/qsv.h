@@ -456,7 +456,7 @@ int av_qsv_get_free_surface(av_qsv_space *, av_qsv_context *, mfxFrameInfo *,
 int av_qsv_get_free_encode_task(av_qsv_list *);
 
 int av_is_qsv_available(mfxIMPL, mfxVersion *);
-void av_qsv_wait_on_sync(av_qsv_context *, av_qsv_stage *);
+int av_qsv_wait_on_sync(av_qsv_context *, av_qsv_stage *);
 
 void av_qsv_add_context_usage(av_qsv_context *, int);
 
