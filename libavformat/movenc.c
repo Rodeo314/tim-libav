@@ -2915,9 +2915,11 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
         memcpy(trk->vos_data, enc->extradata, trk->vos_len);
     }
 
-    if (enc->codec_id == AV_CODEC_ID_H264 && trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {
-        /* from x264 or from bytestream h264 */
-        /* nal reformating needed */
+    if ((enc->codec_id == AV_CODEC_ID_H264 ||
+         enc->codec_id == AV_CODEC_ID_HEVC) &&
+        trk->vos_len > 0 && *(uint8_t *)trk->vos_data != 1) {
+        /* extradata is not in avcC/hvcC format, so assume the bitstream is in
+         * Annex B format, and convert it to ISO/IEC 14496-15 format */
         if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
             ff_avc_parse_nal_units_buf(pkt->data, &reformatted_data,
                                        &size);
