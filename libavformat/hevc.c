@@ -1028,7 +1028,7 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len,
              * NAL unit start code, data is in Annex B
              * format and has to be converted to hvcC.
              */
-            uint8_t *end, *buf = NULL;
+            uint8_t *buf, *end;
 
             ret = ff_avc_parse_nal_units_buf(data, &start, &len);
             if (ret < 0)
