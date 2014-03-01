@@ -1071,3 +1071,39 @@ end:
     av_free(start);
     return ret;
 }
+
+int ff_hevc_nal_filter_ps_buf(const uint8_t *buf_in, uint8_t **buf_out,
+                              int *size)
+{
+    int ret;
+    uint8_t *end, *buf;
+
+    ret = ff_avc_parse_nal_units_buf(buf_in, buf_out, size);
+    if (ret < 0)
+        return ret;
+
+    buf = *buf_out;
+    end = *buf_out + *size;
+
+    while (end - buf > 4) {
+        uint32_t len = FFMIN(AV_RB32(buf) + 4, end - buf);
+        uint8_t type = (buf[4] >> 1) & 0x3f;
+
+        switch (type) {
+        case NAL_VPS:
+        case NAL_SPS:
+        case NAL_PPS:
+            // filter out any parameter sets
+            memmove(buf, buf + len, len);
+            end -= len;
+            break;
+        default:
+            // keep this NAL and move on
+            buf += len;
+            break;
+        }
+    }
+
+    *size = *buf_out - end;
+    return 0;
+}

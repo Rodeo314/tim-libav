@@ -48,4 +48,10 @@
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len,
                        int ps_array_completeness);
 
+/**
+ * FIXME
+ */
+int ff_hevc_nal_filter_ps_buf(const uint8_t *buf_in, uint8_t **buf_out,
+                              int *size);
+
 #endif /* AVFORMAT_HEVC_H */

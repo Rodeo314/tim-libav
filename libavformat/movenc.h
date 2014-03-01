@@ -159,6 +159,8 @@ typedef struct MOVMuxContext {
     AVIOContext *mdat_buf;
 
     int64_t reserved_moov_pos;
+
+    int hevc_codec_tag;
 } MOVMuxContext;
 
 #define FF_MOV_FLAG_RTP_HINT 1

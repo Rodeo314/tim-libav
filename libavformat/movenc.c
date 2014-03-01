@@ -64,6 +64,7 @@ static const AVOption options[] = {
     { "min_frag_duration", "Minimum fragment duration", offsetof(MOVMuxContext, min_fragment_duration), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "frag_size", "Maximum fragment size", offsetof(MOVMuxContext, max_fragment_size), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
     { "ism_lookahead", "Number of lookahead entries for ISM files", offsetof(MOVMuxContext, ism_lookahead), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM},
+    { "hevc_codec_tag", "Sample entry name for HEVC", offsetof(MOVMuxContext, hevc_codec_tag), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
     { NULL },
 };
 
@@ -872,6 +873,12 @@ static int mov_get_codec_tag(AVFormatContext *s, MOVTrack *track)
                 if (tag)
                     av_log(s, AV_LOG_WARNING, "Using MS style video codec tag, "
                            "the file may be unplayable!\n");
+            } else if (track->enc->codec_id == AV_CODEC_ID_HEVC) {
+                MOVMuxContext *mov = s->priv_data;
+                if (mov->hevc_codec_tag)
+                    tag = MKTAG('h','v','c','1');
+                else
+                    tag = MKTAG('h','e','v','1');
             }
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
             tag = ff_codec_get_tag(ff_codec_movaudio_tags, track->enc->codec_id);
@@ -2936,7 +2943,11 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
          * extradata is in Annex B format, assume the bitstream is too and
          * convert it (start code prefixes replaced by 4-byte size field)
          */
-        if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
+        if (enc->codec_id == AV_CODEC_ID_HEVC && mov->hevc_codec_tag) {
+            /* Parameter sets are forbidden in the bitstream, filter them out */
+            ff_hevc_nal_filter_ps_buf(pkt->data, &reformatted_data, &size);
+            avio_write(pb, reformatted_data, size);
+        } else if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
             ff_avc_parse_nal_units_buf(pkt->data, &reformatted_data,
                                        &size);
             avio_write(pb, reformatted_data, size);
