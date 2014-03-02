@@ -1114,13 +1114,14 @@ static int av_unused ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
     int ret = 0;
     uint8_t *buf, *end, *start = NULL;
 
-    if (!filter_ps) {
-        ret = ff_avc_parse_nal_units(pb, buf_in, size);
-        goto end;
-    }
-
     if (!ps_count) {
         ret = AVERROR_BUG;
+        goto end;
+    }
+    *ps_count = 0;
+
+    if (!filter_ps) {
+        ret = ff_avc_parse_nal_units(pb, buf_in, size);
         goto end;
     }
 
