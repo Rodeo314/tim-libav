@@ -1051,8 +1051,6 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len,
 
                 buf += size;
             }
-
-            ret = hvcc_write(pb, &hvcc);
         } else if (*data != 1) {
             /* We can't write a valid hvcC from the provided data */
             ret = AVERROR_INVALIDDATA;
@@ -1060,11 +1058,15 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len,
         } else {
             /* Data is already hvcC-formatted */
             avio_write(pb, data, len);
+            goto end;
         }
     } else {
         /* We can't write a valid hvcC from the provided data */
         ret = AVERROR_INVALIDDATA;
+        goto end;
     }
+
+    ret = hvcc_write(pb, &hvcc);
 
 end:
     hvcc_close(&hvcc);
