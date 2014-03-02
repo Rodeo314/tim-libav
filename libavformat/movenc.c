@@ -693,7 +693,7 @@ static int mov_write_hvcc_tag(AVIOContext *pb, MOVTrack *track)
 
     avio_wb32(pb, 0);
     ffio_wfourcc(pb, "hvcC");
-    ff_isom_write_hvcc(pb, track->vos_data, track->vos_len, 0);
+    ff_isom_write_hvcc(pb, track->vos_data, track->vos_len, 0);//fixme
     return update_size(pb, pos);
 }
 
