@@ -1144,17 +1144,26 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data,
     end = start + len;
 
     while (end - buf > 4) {
-        uint32_t size = FFMIN(AV_RB32(buf), end - buf - 4);
+        uint32_t len = FFMIN(AV_RB32(buf), end - buf - 4);
+        uint8_t type = (buf[4] >> 1) & 0x3f;
 
         buf += 4;
 
-        if (size) {
-            ret = hvcc_add_nal_unit(buf, size, ps_array_completeness, &hvcc);
+        switch (type) {
+        case NAL_VPS:
+        case NAL_SPS:
+        case NAL_PPS:
+        case NAL_SEI_PREFIX:
+        case NAL_SEI_SUFFIX:
+            ret = hvcc_add_nal_unit(buf, len, ps_array_completeness, &hvcc);
             if (ret < 0)
                 goto end;
+            break;
+        default:
+            break;
         }
 
-        buf += size;
+        buf += len;
     }
 
     ret = hvcc_write(pb, &hvcc);
