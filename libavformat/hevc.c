@@ -1107,3 +1107,49 @@ int ff_hevc_nal_filter_ps_buf(const uint8_t *buf_in, uint8_t **buf_out,
     *size = *buf_out - end;
     return 0;
 }
+
+static int av_unused ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
+                                        int size, int filter_ps, int *ps_count)
+{
+    int ret = 0;
+    uint8_t *buf, *end, *start = NULL;
+
+    if (!filter_ps) {
+        ret = ff_avc_parse_nal_units(pb, buf_in, size);
+        goto end;
+    }
+
+    if (!ps_count) {
+        ret = AVERROR_BUG;
+        goto end;
+    }
+
+    ret = ff_avc_parse_nal_units_buf(buf_in, &start, &size);
+    if (ret < 0)
+        goto end;
+
+    buf = start;
+    end = start + size;
+
+    while (end - buf > 4) {
+        uint32_t len = FFMIN(AV_RB32(buf) + 4, end - buf);
+        uint8_t type = (buf[4] >> 1) & 0x3f;
+
+        switch (type) {
+        case NAL_VPS:
+        case NAL_SPS:
+        case NAL_PPS:
+            *ps_count += 1;
+            break;
+        default:
+            avio_write(pb, buf, len);
+            break;
+        }
+
+        buf += size;
+    }
+
+end:
+    free(start);
+    return ret;
+}
