@@ -1032,8 +1032,10 @@ int ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
     end = start + size;
 
     while (end - buf > 4) {
-        uint32_t len = FFMIN(AV_RB32(buf) + 4, end - buf);
+        uint32_t len = FFMIN(AV_RB32(buf), end - buf - 4);
         uint8_t type = (buf[4] >> 1) & 0x3f;
+
+        buf += 4;
 
         switch (type) {
         case NAL_VPS:
@@ -1042,11 +1044,12 @@ int ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
             num_ps++;
             break;
         default:
+            avio_wb32 (pb, len);
             avio_write(pb, buf, len);
             break;
         }
 
-        buf += size;
+        buf += len;
     }
 
 end:
@@ -1080,8 +1083,10 @@ int ff_hevc_annexb2mp4_buf(const uint8_t *buf_in, uint8_t **buf_out,
     end = start + *size;
 
     while (end - buf > 4) {
-        uint32_t len = FFMIN(AV_RB32(buf) + 4, end - buf);
+        uint32_t len = FFMIN(AV_RB32(buf), end - buf - 4);
         uint8_t type = (buf[4] >> 1) & 0x3f;
+
+        buf += 4;
 
         switch (type) {
         case NAL_VPS:
@@ -1090,6 +1095,7 @@ int ff_hevc_annexb2mp4_buf(const uint8_t *buf_in, uint8_t **buf_out,
             num_ps++;
             break;
         default:
+            avio_wb32 (pb, len);
             avio_write(pb, buf, len);
             break;
         }
