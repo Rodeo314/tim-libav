@@ -2945,7 +2945,7 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
          */
         if (enc->codec_id == AV_CODEC_ID_HEVC && mov->hevc_codec_tag) {
             /* Parameter sets are forbidden in the bitstream, filter them out */
-            ff_hevc_nal_filter_ps_buf(pkt->data, &reformatted_data, &size);
+            ff_hevc_annexb2mp4_buf(pkt->data, &reformatted_data, &size, 1, NULL);
             avio_write(pb, reformatted_data, size);
         } else if (trk->hint_track >= 0 && trk->hint_track < mov->nb_streams) {
             ff_avc_parse_nal_units_buf(pkt->data, &reformatted_data,

@@ -45,13 +45,18 @@
  * @return 0 in case of success, a negative value corresponding to an
  * AVERROR code in case of failure
  */
-int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len,
-                       int ps_array_completeness);
+int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data,
+                       int len, int ps_array_completeness);
+/**
+ * FIXME
+ */
+int ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
+                       int size, int filter_ps, int *ps_count);
 
 /**
  * FIXME
  */
-int ff_hevc_nal_filter_ps_buf(const uint8_t *buf_in, uint8_t **buf_out,
-                              int *size);
+int ff_hevc_annexb2mp4_buf(const uint8_t *buf_in, uint8_t **buf_out,
+                           int *size, int filter_ps, int *ps_count);
 
 #endif /* AVFORMAT_HEVC_H */
