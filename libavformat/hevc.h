@@ -30,6 +30,18 @@
 #include "avio.h"
 
 /**
+ * FIXME
+ */
+int ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
+                       int size, int filter_ps, int *ps_count);
+
+/**
+ * FIXME
+ */
+int ff_hevc_annexb2mp4_buf(const uint8_t *buf_in, uint8_t **buf_out,
+                           int *size, int filter_ps, int *ps_count);
+
+/**
  * Writes HEVC extradata (parameter sets, declarative SEI NAL units) to the
  * provided AVIOContext.
  *
@@ -47,16 +59,5 @@
  */
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data,
                        int len, int ps_array_completeness);
-/**
- * FIXME
- */
-int ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
-                       int size, int filter_ps, int *ps_count);
-
-/**
- * FIXME
- */
-int ff_hevc_annexb2mp4_buf(const uint8_t *buf_in, uint8_t **buf_out,
-                           int *size, int filter_ps, int *ps_count);
 
 #endif /* AVFORMAT_HEVC_H */
