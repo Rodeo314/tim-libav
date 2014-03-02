@@ -1017,53 +1017,44 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data, int len,
                        int ps_array_completeness)
 {
     int ret = 0;
-    uint8_t *start = NULL;
+    uint8_t *buf, *end, *start = NULL;
     HEVCDecoderConfigurationRecord hvcc;
 
     hvcc_init(&hvcc);
 
-    if (len > 6) {
-        if (AV_RB32(data) == 1 || AV_RB24(data) == 1) {
-            /*
-             * NAL unit start code, data is in Annex B
-             * format and has to be converted to hvcC.
-             */
-            uint8_t *buf, *end;
-
-            ret = ff_avc_parse_nal_units_buf(data, &start, &len);
-            if (ret < 0)
-                goto end;
-
-            buf = start;
-            end = start + len;
-
-            while (end - buf > 4) {
-                uint32_t size = FFMIN(AV_RB32(buf), end - buf - 4);
-
-                buf += 4;
-
-                if (size) {
-                    ret = hvcc_add_nal_unit(buf, size, ps_array_completeness,
-                                            &hvcc);
-                    if (ret < 0)
-                        goto end;
-                }
-
-                buf += size;
-            }
-        } else if (*data != 1) {
-            /* We can't write a valid hvcC from the provided data */
-            ret = AVERROR_INVALIDDATA;
-            goto end;
-        } else {
-            /* Data is already hvcC-formatted */
-            avio_write(pb, data, len);
-            goto end;
-        }
-    } else {
+    if (len < 6) {
         /* We can't write a valid hvcC from the provided data */
         ret = AVERROR_INVALIDDATA;
         goto end;
+    } else if (*data == 1) {
+        /* Data is already hvcC-formatted */
+        avio_write(pb, data, len);
+        goto end;
+    } else if (!(AV_RB24(data) == 1 || AV_RB32(data) == 1)) {
+        /* Not a valid Annex B start code prefix */
+        ret = AVERROR_INVALIDDATA;
+        goto end;
+    }
+
+    ret = ff_avc_parse_nal_units_buf(data, &start, &len);
+    if (ret < 0)
+        goto end;
+
+    buf = start;
+    end = start + len;
+
+    while (end - buf > 4) {
+        uint32_t size = FFMIN(AV_RB32(buf), end - buf - 4);
+
+        buf += 4;
+
+        if (size) {
+            ret = hvcc_add_nal_unit(buf, size, ps_array_completeness, &hvcc);
+            if (ret < 0)
+                goto end;
+        }
+
+        buf += size;
     }
 
     ret = hvcc_write(pb, &hvcc);
