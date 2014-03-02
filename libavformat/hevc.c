@@ -1111,14 +1111,8 @@ int ff_hevc_nal_filter_ps_buf(const uint8_t *buf_in, uint8_t **buf_out,
 static int av_unused ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
                                         int size, int filter_ps, int *ps_count)
 {
-    int ret = 0;
+    int num_ps = 0, ret = 0;
     uint8_t *buf, *end, *start = NULL;
-
-    if (!ps_count) {
-        ret = AVERROR_BUG;
-        goto end;
-    }
-    *ps_count = 0;
 
     if (!filter_ps) {
         ret = ff_avc_parse_nal_units(pb, buf_in, size);
@@ -1140,7 +1134,7 @@ static int av_unused ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
         case NAL_VPS:
         case NAL_SPS:
         case NAL_PPS:
-            *ps_count += 1;
+            num_ps++;
             break;
         default:
             avio_write(pb, buf, len);
@@ -1152,6 +1146,8 @@ static int av_unused ff_hevc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
 
 end:
     free(start);
+    if (ps_count)
+        *ps_count = num_ps;
     return ret;
 }
 
@@ -1159,15 +1155,9 @@ static int av_unused ff_hevc_annexb2mp4_buf(const uint8_t *buf_in,
                                             uint8_t **buf_out, int *size,
                                             int filter_ps, int *ps_count)
 {
-    int ret = 0;
     AVIOContext *pb;
+    int num_ps = 0, ret = 0;
     uint8_t *buf, *end, *start = NULL;
-
-    if (!ps_count) {
-        ret = AVERROR_BUG;
-        goto end;
-    }
-    *ps_count = 0;
 
     if (!filter_ps) {
         ret = ff_avc_parse_nal_units_buf(buf_in, buf_out, size);
@@ -1193,7 +1183,7 @@ static int av_unused ff_hevc_annexb2mp4_buf(const uint8_t *buf_in,
         case NAL_VPS:
         case NAL_SPS:
         case NAL_PPS:
-            *ps_count += 1;
+            num_ps++;
             break;
         default:
             avio_write(pb, buf, len);
@@ -1208,5 +1198,7 @@ static int av_unused ff_hevc_annexb2mp4_buf(const uint8_t *buf_in,
 
 end:
     free(start);
+    if (ps_count)
+        *ps_count = num_ps;
     return ret;
 }
