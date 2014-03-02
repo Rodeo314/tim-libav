@@ -775,7 +775,8 @@ static int hvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
             goto end;
         break;
     default:
-        break;
+        ret = AVERROR_INVALIDDATA;
+        goto end;
     }
 
 end:
