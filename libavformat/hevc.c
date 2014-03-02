@@ -1104,7 +1104,6 @@ int ff_hevc_annexb2mp4_buf(const uint8_t *buf_in, uint8_t **buf_out,
         buf += len;
     }
 
-    av_freep(buf_out);
     *size = avio_close_dyn_buf(pb, buf_out);
 
 end:
@@ -1115,7 +1114,7 @@ end:
 }
 
 int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data,
-                       int len, int ps_array_completeness)
+                       int size, int ps_array_completeness)
 {
     int ret = 0;
     uint8_t *buf, *end, *start = NULL;
@@ -1123,13 +1122,13 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data,
 
     hvcc_init(&hvcc);
 
-    if (len < 6) {
+    if (size < 6) {
         /* We can't write a valid hvcC from the provided data */
         ret = AVERROR_INVALIDDATA;
         goto end;
     } else if (*data == 1) {
         /* Data is already hvcC-formatted */
-        avio_write(pb, data, len);
+        avio_write(pb, data, size);
         goto end;
     } else if (!(AV_RB24(data) == 1 || AV_RB32(data) == 1)) {
         /* Not a valid Annex B start code prefix */
@@ -1137,12 +1136,12 @@ int ff_isom_write_hvcc(AVIOContext *pb, const uint8_t *data,
         goto end;
     }
 
-    ret = ff_avc_parse_nal_units_buf(data, &start, &len);
+    ret = ff_avc_parse_nal_units_buf(data, &start, &size);
     if (ret < 0)
         goto end;
 
     buf = start;
-    end = start + len;
+    end = start + size;
 
     while (end - buf > 4) {
         uint32_t len = FFMIN(AV_RB32(buf), end - buf - 4);
