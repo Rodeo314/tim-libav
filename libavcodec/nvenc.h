@@ -19,6 +19,8 @@
 #ifndef AVCODEC_NVENC_H
 #define AVCODEC_NVENC_H
 
+#include <cuda.h>
+
 #include "libavutil/fifo.h"
 #include "libavutil/opt.h"
 

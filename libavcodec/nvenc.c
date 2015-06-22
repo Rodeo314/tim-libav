@@ -21,6 +21,7 @@
 
 #include "config.h"
 
+#include <cuda.h>
 #include <string.h>
 
 #define CUDA_LIBNAME "libcuda.so"
@@ -351,7 +352,7 @@ static int nvec_map_preset(NVENCContext *ctx)
         { NV_ENC_PRESET_LOW_LATENCY_HQ_GUID,      NVENC_LOWLATENCY },
         { NV_ENC_PRESET_LOSSLESS_DEFAULT_GUID,    NVENC_LOSSLESS },
         { NV_ENC_PRESET_LOSSLESS_HP_GUID,         NVENC_LOSSLESS },
-        { { 0 } }
+        { 0 }
     };
 
     GUIDTuple *t = &presets[ctx->preset];
