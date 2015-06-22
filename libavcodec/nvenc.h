@@ -19,13 +19,11 @@
 #ifndef AVCODEC_NVENC_H
 #define AVCODEC_NVENC_H
 
-#include <cuda.h>
-#include <nvEncodeAPI.h>
-
 #include "libavutil/fifo.h"
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
+#include "nvEncodeAPI.h"
 
 typedef struct NVENCInputSurface {
     NV_ENC_INPUT_PTR in;

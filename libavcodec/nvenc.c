@@ -21,8 +21,6 @@
 
 #include "config.h"
 
-#include <cuda.h>
-#include <nvEncodeAPI.h>
 #include <string.h>
 
 #define CUDA_LIBNAME "libcuda.so"
@@ -52,6 +50,7 @@
 #include "avcodec.h"
 #include "internal.h"
 #include "nvenc.h"
+#include "nvEncodeAPI.h"
 
 #define NVENC_CAP 0x30
 #define BITSTREAM_BUFFER_SIZE 1024 * 1024

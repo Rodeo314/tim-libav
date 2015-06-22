@@ -4381,8 +4381,8 @@ if enabled libdc1394; then
 fi
 
 if enabled nvenc; then
-    add_cflags "-I/Library/Frameworks/CUDA.framework/Headers/";
-    check_header cuda.h || die "ERROR: cuda.h not found.";
+    cc_default="nvcc";
+    host_cc_default="nvcc";
 fi
 
 if check_pkg_config sdl SDL_events.h SDL_PollEvent; then

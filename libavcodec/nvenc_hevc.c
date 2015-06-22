@@ -23,6 +23,7 @@
 #include "internal.h"
 
 #include "nvenc.h"
+#include "nvEncodeAPI.h"
 
 #define OFFSET(x) offsetof(NVENCContext, x)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
