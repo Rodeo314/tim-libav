@@ -221,7 +221,7 @@ External library support:
   --enable-libxvid         enable Xvid encoding via xvidcore,
                            native MPEG-4/Xvid encoder exists [no]
   --enable-mmal            enable decoding via MMAL [no]
-  --enable-nvenc           enable encoding via NVENC [no]
+  --enable-nvenc           enable encoding via NVENC
   --enable-openssl         enable openssl [no]
   --enable-x11grab         enable X11 grabbing (legacy) [no]
   --enable-zlib            enable zlib [autodetect]
@@ -2330,6 +2330,9 @@ enable valgrind_backtrace
 # By default, enable only those hwaccels that have no external dependencies.
 enable d3d11va dxva2 vda vdpau
 
+# for fun
+enable nonfree && enable nvenc
+
 # build settings
 SHFLAGS='-shared -Wl,-soname,$$(@F)'
 LIBPREF="lib"
@@ -3841,7 +3844,6 @@ die_license_disabled gpl x11grab
 
 die_license_disabled nonfree libfaac
 die_license_disabled nonfree libfdk_aac
-die_license_disabled nonfree nvenc
 die_license_disabled nonfree openssl
 
 die_license_disabled version3 libopencore_amrnb
@@ -4379,10 +4381,8 @@ if enabled libdc1394; then
 fi
 
 if enabled nvenc; then
+    add_cflags "-I/Library/Frameworks/CUDA.framework/Headers/";
     check_header cuda.h || die "ERROR: cuda.h not found.";
-    check_header nvEncodeAPI.h || die "ERROR: nvEncodeAPI.h not found.";
-    check_cpp_condition nvEncodeAPI.h "NVENCAPI_MAJOR_VERSION >= 5" ||
-        die "ERROR: NVENC API version 4 or older is not supported";
 fi
 
 if check_pkg_config sdl SDL_events.h SDL_PollEvent; then
