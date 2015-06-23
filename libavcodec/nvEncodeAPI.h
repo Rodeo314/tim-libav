@@ -22,6 +22,33 @@
 
 #include "nvencwrapper_api.h"
 
+/*
+ * FOSS-compatible header has been included
+ */
+#define NVW_FREE_HEADER
+/*
+ * #define to something breaking compilation before including the
+ * header in order to differentiate this from NVIDIA's own header
+ */
+#ifdef  NVW_DIE_NONFREE
+#undef  NVW_DIE_NONFREE
+#endif
+/*
+ * NVW dlopen
+ */
+#if   defined(__APPLE__)
+#define NVW_LIBNAME "libnvwrapper.dylib"
+#elif defined(_WIN64)
+#define NVW_LIBNAME "libnvwrapper64.dll"
+#elif defined(_WIN32)
+#define NVW_LIBNAME "libnvwrapper32.dll"
+#else
+#define NVW_LIBNAME "libnvwrapper.so"
+#endif
+
+/*
+ * All the rest
+ */
 #define NV_ENC_CAPS_SUPPORT_YUV444_ENCODE           NVW_ENC_CAPS_SUPPORT_YUV444_ENCODE
 #define NV_ENC_CAPS_WIDTH_MAX                       NVW_ENC_CAPS_WIDTH_MAX
 #define NV_ENC_CAPS_HEIGHT_MAX                      NVW_ENC_CAPS_HEIGHT_MAX
